@@ -23,9 +23,16 @@ namespace Core::FE
 
 namespace DealiiWrappers
 {
+  /**
+   * @brief Assigns a finite element and degrees of freedom to the given @p dof_handler.
+   *
+   * The information about the finite element and degrees of freedom is taken from the
+   * @p context object, which was created during create_triangulation(). After calling this
+   * function, the @p dof_handler will be set up to mimic the finite element space inside
+   * the @p discretization object.
+   */
   template <int dim, int spacedim>
-  std::unique_ptr<dealii::hp::MappingCollection<dim, spacedim>> assign_fes_and_dofs(
-      dealii::DoFHandler<dim, spacedim>& dof_handler,
+  void assign_fes_and_dofs(dealii::DoFHandler<dim, spacedim>& dof_handler,
       const Core::FE::Discretization& discretization, Context<dim, spacedim>& context);
 
 }  // namespace DealiiWrappers

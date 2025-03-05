@@ -28,12 +28,11 @@ namespace DealiiWrappers
    * @p discretization. The given @p tria can be either
    *
    *  - (serial) dealii::Triangulation
-   *  - dealii::parallel::distributed::Triangulation (abbreviated p:d:T)
    *  - dealii::parallel::fullydistributed::Triangulation (abbreviated p:f:T).
    *
    * The nodes and elements of the @p discretization are translated into vertices and cells in the
-   * target Triangulation. Note that, the serial and p:d:T Triangulation store the  full (coarse)
-   * mesh which is extracted from @p discretization. In contrast, the p:f:T variant only stores the
+   * target Triangulation. Note that, the serial Triangulation stores the full (coarse) mesh which
+   * is extracted from @p discretization. In contrast, the p:f:T variant only stores the
    * relevant parts of a coarse mesh on every process. For large meshes (> 10,000 cells) this often
    * becomes necessary to save memory. The partitioning of the cells of a p:f:T will be identical to
    * the partitioning of the @p discretization.

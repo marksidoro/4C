@@ -12,7 +12,6 @@
 #include "4C_utils_exceptions.hpp"
 
 #include <deal.II/distributed/fully_distributed_tria.h>
-#include <deal.II/distributed/tria.h>
 #include <deal.II/grid/grid_tools.h>
 
 FOUR_C_NAMESPACE_OPEN
@@ -158,17 +157,9 @@ namespace DealiiWrappers
 
       dealii::GridTools::consistently_order_cells(construction_data.coarse_cells);
 
-      // Use the gathered data depending on the exact type of Triangulation we want to create.
-      if (const auto distributed_tria =
-              dynamic_cast<dealii::parallel::distributed::Triangulation<dim, spacedim>*>(&tria))
-      {
-        // For a distributed Triangulation, the coarse mesh is necessary on all processes.
-        distributed_tria->create_triangulation(construction_data.coarse_cell_vertices,
-            construction_data.coarse_cells, dealii::SubCellData{});
-      }
-      else if (const auto fully_distributed_tria =
-                   dynamic_cast<dealii::parallel::fullydistributed::Triangulation<dim, spacedim>*>(
-                       &tria))
+      if (const auto fully_distributed_tria =
+              dynamic_cast<dealii::parallel::fullydistributed::Triangulation<dim, spacedim>*>(
+                  &tria))
       {
         // Define the function that creates the triangulation on the root process in a group
         const auto serial_grid_generator = [&construction_data](auto& tria_serial)
@@ -229,9 +220,13 @@ namespace DealiiWrappers
         std::tie(context.pimpl_->finite_elements, context.pimpl_->finite_element_names) =
             ElementConversion::create_required_finite_element_collection<dim, spacedim>(
                 discretization);
-
-        // Create Mapping for potentially curved boundary approximation
-        Internal::fill_mapping(context, discretization);
+      }
+      // We cannot handle any other parallel Triangulation types yet.
+      else if (dynamic_cast<dealii::parallel::TriangulationBase<dim, spacedim>*>(&tria) != nullptr)
+      {
+        FOUR_C_THROW(
+            "The Triangulation is parallel but not a parallel::fullydistributed::Triangulation. "
+            "This is not yet implemented.");
       }
       else
       {

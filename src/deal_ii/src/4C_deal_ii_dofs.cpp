@@ -22,8 +22,7 @@ namespace DealiiWrappers
 {
 
   template <int dim, int spacedim>
-  std::unique_ptr<dealii::hp::MappingCollection<dim, spacedim>> assign_fes_and_dofs(
-      dealii::DoFHandler<dim, spacedim>& dof_handler,
+  void assign_fes_and_dofs(dealii::DoFHandler<dim, spacedim>& dof_handler,
       const Core::FE::Discretization& discretization, Context<dim, spacedim>& context)
   {
     const auto& fe_collection = context.pimpl_->finite_elements;
@@ -54,33 +53,12 @@ namespace DealiiWrappers
     FOUR_C_ASSERT(fe_collection.size() == 1,
         "The current implementation only supports a single finite element type per "
         "discretization.");
-
-    if (fe_collection[0].degree == 1)
-    {
-      // simple case: just return the isoparametric linear mapping
-      return std::make_unique<dealii::hp::MappingCollection<dim, spacedim>>(
-          dealii::MappingQ<dim, spacedim>(1));
-    }
-    else if (fe_collection[0].degree == 2)
-    {
-      // complicated case: we need to find the shift of the 4C nodes and create a mapping with
-      // these
-
-      return std::make_unique<dealii::hp::MappingCollection<dim, spacedim>>(
-          dealii::MappingQ<dim, spacedim>(2));
-    }
-    else
-    {
-      FOUR_C_THROW("Polynomial FEs with degree higher than 2 are not supported.");
-    }
   }
 
 
   // explicit instantiation
-
-  template std::unique_ptr<dealii::hp::MappingCollection<3, 3>> assign_fes_and_dofs(
-      dealii::DoFHandler<3, 3>&, const Core::FE::Discretization& discretization,
-      Context<3, 3>& context);
+  template void assign_fes_and_dofs(dealii::DoFHandler<3, 3>&,
+      const Core::FE::Discretization& discretization, Context<3, 3>& context);
 }  // namespace DealiiWrappers
 
 FOUR_C_NAMESPACE_CLOSE

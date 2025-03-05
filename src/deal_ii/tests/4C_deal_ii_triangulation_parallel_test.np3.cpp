@@ -8,13 +8,10 @@
 #include <gtest/gtest.h>
 
 #include "4C_deal_ii_create_discretization_helper_test.hpp"
-#include "4C_deal_ii_dofs.hpp"
 #include "4C_deal_ii_triangulation.hpp"
 
 #include <deal.II/distributed/fully_distributed_tria.h>
-#include <deal.II/distributed/tria.h>
 #include <deal.II/fe/fe_q.h>
-#include <deal.II/fe/fe_simplex_p.h>
 #include <deal.II/fe/mapping_fe.h>
 #include <deal.II/fe/mapping_q.h>
 #include <deal.II/grid/grid_generator.h>
@@ -64,22 +61,6 @@ namespace
     output_triangulation(tria, "SerialTriaFromPartitionedDiscretization.vtu");
   }
 
-  TEST(CreateTriangulation, DistributedTria27Cells)
-  {
-    constexpr int dim = 3;
-    dealii::parallel::distributed::Triangulation<dim> tria(MPI_COMM_WORLD);
-    const auto comm = MPI_COMM_WORLD;
-
-    Core::FE::Discretization discret{"empty", comm, dim};
-    TESTING::fill_discretization_hyper_cube(discret, 3, comm);
-
-    DealiiWrappers::create_triangulation(tria, discret);
-
-    EXPECT_EQ(tria.n_active_cells(), 27);
-    EXPECT_EQ(tria.n_used_vertices(), 64);
-
-    output_triangulation(tria, "DistributedTria27Cells.vtu");
-  }
 
   TEST(CreateTriangulation, FullyDistributedTria64Cells)
   {
