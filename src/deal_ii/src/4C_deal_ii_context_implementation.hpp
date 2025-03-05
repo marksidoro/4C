@@ -35,42 +35,6 @@ namespace DealiiWrappers::Internal
     //! The names of the FiniteElements in #finite_elements.
     std::vector<std::string> finite_element_names;
   };
-
-  template <int dim, int spacedim>
-  const Core::Elements::Element *
-        to_element(const Context<dim, spacedim>& context,
-          const Core::FE::Discretization & discretization,
-          const typename dealii::Triangulation<dim, spacedim>::cell_iterator &cell)
-  {
-    return discretization.l_row_element(context.pimpl_->cell_index_to_element_lid[cell->index()]);
-  }
-
-
-
-  /**
-   * Fill mapping data in the context.
-   *
-   * @pre FiniteElements have already been set in context.
-   */
-  template <int dim, int spacedim>
-  void fill_mapping(Context<dim, spacedim>& context, const Core::FE::Discretization& discretization)
-  {
-    FOUR_C_ASSERT(context.pimpl_->finite_elements.size() == 1, "Internal error.");
-
-    const auto& fe = context.pimpl_->finite_elements[0];
-
-    if (fe.degree == 1)
-    {
-      // simple linear mapping
-      context.pimpl_->mapping.push_back(dealii::MappingQ<dim, spacedim>(1));
-    }
-    else if (fe.degree == 2)
-    {
-      // create a MappingQEulerian that takes the shift into account
-    }
-    else
-      FOUR_C_THROW("Only finite elements up to degree 2 are supported.");
-  }
 }  // namespace DealiiWrappers::Internal
 
 FOUR_C_NAMESPACE_CLOSE
