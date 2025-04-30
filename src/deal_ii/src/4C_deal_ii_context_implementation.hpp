@@ -50,6 +50,16 @@ namespace DealiiWrappers::Internal
     };
   };
 
+  template <int dim, int spacedim>
+  const Core::Elements::Element *
+        to_element(const Context<dim, spacedim>& context,
+          const Core::FE::Discretization & discretization,
+          const typename dealii::Triangulation<dim, spacedim>::cell_iterator &cell)
+  {
+    return discretization.l_row_element(context.pimpl_->cell_index_to_element_lid[cell->index()]);
+  }
+
+
 
   /**
    * Fill mapping data in the context.
