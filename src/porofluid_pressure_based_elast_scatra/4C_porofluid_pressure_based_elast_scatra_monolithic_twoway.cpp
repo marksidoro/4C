@@ -20,7 +20,7 @@
 #include "4C_linear_solver_method.hpp"
 #include "4C_linear_solver_method_linalg.hpp"
 #include "4C_linear_solver_method_parameters.hpp"
-#include "4C_porofluid_pressure_based_elast_base.hpp"
+#include "4C_porofluid_pressure_based_elast.hpp"
 #include "4C_scatra_ele_action.hpp"
 #include "4C_scatra_timint_implicit.hpp"
 #include "4C_scatra_timint_meshtying_strategy_artery.hpp"
@@ -961,11 +961,11 @@ void PoroPressureBased::PoroMultiPhaseScaTraMonolithicTwoWay::newton_error_check
       printf(
           "|  Max. rel. increment [%3s]:  %10.3E  < %10.3E                                        "
           "       |\n",
-          magic_enum::enum_name(vectornorminc_).data(), maxinc_, ittolinc_);
+          EnumTools::enum_name(vectornorminc_).data(), maxinc_, ittolinc_);
       printf(
           "|  Maximum    residual [%3s]:  %10.3E  < %10.3E                                        "
           "       |\n",
-          magic_enum::enum_name(vectornormfres_).data(), maxres_, ittolres_);
+          EnumTools::enum_name(vectornormfres_).data(), maxres_, ittolres_);
       printf(
           "+--------------+-------------+-------------+--------------+------------+-----"
           "-------+-----------------+\n");
@@ -986,11 +986,11 @@ void PoroPressureBased::PoroMultiPhaseScaTraMonolithicTwoWay::newton_error_check
       printf(
           "|  Max. rel. increment [%3s]:  %10.3E    %10.3E                                        "
           "|\n",
-          magic_enum::enum_name(vectornorminc_).data(), maxinc_, ittolinc_);
+          EnumTools::enum_name(vectornorminc_).data(), maxinc_, ittolinc_);
       printf(
           "|  Maximum    residual [%3s]:  %10.3E    %10.3E                                        "
           "|\n",
-          magic_enum::enum_name(vectornormfres_).data(), maxres_, ittolres_);
+          EnumTools::enum_name(vectornormfres_).data(), maxres_, ittolres_);
       printf(
           "+--------------+-------------+-------------+--------------+------------+-----"
           "-------+-----------------+\n");

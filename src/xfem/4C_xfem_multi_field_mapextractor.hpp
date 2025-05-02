@@ -129,7 +129,7 @@ namespace XFEM
    */
   class MultiFieldMapExtractor
   {
-    typedef std::vector<std::shared_ptr<const Core::FE::Discretization>> XDisVec;
+    using XDisVec = std::vector<std::shared_ptr<const Core::FE::Discretization>>;
 
     // number of map extractor types
     static constexpr unsigned NUM_MAP_TYPES = 2;
@@ -658,7 +658,6 @@ namespace XFEM
 
     int max_num_reserved_dofs_per_node_;
 
-    /// Epetra communicator
     MPI_Comm comm_;
 
     /// vector containing pointers to all the input discretizations

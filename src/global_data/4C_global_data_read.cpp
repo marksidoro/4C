@@ -17,9 +17,9 @@
 #include "4C_fem_general_utils_createdis.hpp"
 #include "4C_fem_nurbs_discretization.hpp"
 #include "4C_global_legacy_module.hpp"
+#include "4C_global_legacy_module_validconditions.hpp"
 #include "4C_global_legacy_module_validmaterials.hpp"
-#include "4C_inpar_validconditions.hpp"
-#include "4C_inpar_validparameters.hpp"
+#include "4C_global_legacy_module_validparameters.hpp"
 #include "4C_io.hpp"
 #include "4C_io_exodus.hpp"
 #include "4C_io_input_file.hpp"
@@ -93,7 +93,7 @@ namespace
     }
 
     {
-      auto valid_conditions = Input::valid_conditions();
+      auto valid_conditions = global_legacy_module_callbacks().conditions();
       for (const auto& cond : valid_conditions)
       {
         auto condition_spec = all_of({
@@ -116,7 +116,7 @@ namespace
       spec = Core::IO::InputSpecBuilders::list(section_name, spec, {.required = false});
     }
 
-    section_specs.merge(Input::valid_parameters());
+    section_specs.merge(Global::valid_parameters());
   }
 }  // namespace
 
@@ -519,18 +519,6 @@ std::unique_ptr<Core::IO::MeshReader> Global::read_discretization(
     {
       // create empty discretizations
       discretization_types["fluid"] = {DiscretizationType::faces, "FLUID"};
-      discretization_types["scatra"] = {DiscretizationType::plain, "TRANSPORT"};
-      break;
-    }
-
-    case Core::ProblemType::fluid_xfem_ls:
-    {
-      // create empty discretizations
-      discretization_types["structure"] = {DiscretizationType::plain, "STRUCTURE"};
-      if (problem.get_problem_type() == Core::ProblemType::fluid_xfem_ls)
-        discretization_types["fluid"] = {DiscretizationType::xfem, "FLUID"};
-      else
-        discretization_types["fluid"] = {DiscretizationType::faces, "FLUID"};
       discretization_types["scatra"] = {DiscretizationType::plain, "TRANSPORT"};
       break;
     }
@@ -1281,7 +1269,7 @@ void Global::read_parameter(Global::Problem& problem, Core::IO::InputFile& input
 {
   std::shared_ptr<Teuchos::ParameterList> list = std::make_shared<Teuchos::ParameterList>("ROOT");
 
-  auto parameter_section_specs = Input::valid_parameters();
+  auto parameter_section_specs = global_legacy_module_callbacks().parameters();
 
   for (const auto& [section_name, _] : parameter_section_specs)
   {
@@ -1496,7 +1484,7 @@ namespace
         for (const auto& [id, eb] : element_blocks)
         {
           std::set<int> nodes;
-          for (const auto& connectivity : *eb.get_ele_conn() | std::views::values)
+          for (const auto& connectivity : eb.get_ele_conn() | std::views::values)
           {
             nodes.insert(connectivity.begin(), connectivity.end());
           }
@@ -1558,7 +1546,7 @@ void Global::read_conditions(
   nodeset[3] = &dvol_fenode;
 
   // create list of known conditions
-  std::vector<Core::Conditions::ConditionDefinition> valid_conditions = Input::valid_conditions();
+  std::vector<Core::Conditions::ConditionDefinition> valid_conditions = Global::valid_conditions();
 
   // test for each condition definition (input file condition section)
   // - read all conditions that match the definition

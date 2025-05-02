@@ -11,7 +11,6 @@
 #include "4C_fem_discretization.hpp"
 #include "4C_global_data.hpp"
 #include "4C_inpar_structure.hpp"
-#include "4C_inpar_validparameters.hpp"
 #include "4C_io_control.hpp"
 #include "4C_structure_new_solver_factory.hpp"
 #include "4C_structure_new_timint_base.hpp"
@@ -29,7 +28,7 @@ FOUR_C_NAMESPACE_OPEN
 /*----------------------------------------------------------------------*/
 /*----------------------------------------------------------------------*/
 Adapter::StructureTimeAdaJoint::StructureTimeAdaJoint(std::shared_ptr<Structure> structure)
-    : StructureTimeAda(structure), sta_(nullptr), sta_wrapper_(nullptr)
+    : StructureTimeAda(structure), sta_(nullptr)
 {
   if (stm_->is_setup()) setup_auxiliary();
 }
@@ -92,12 +91,11 @@ void Adapter::StructureTimeAdaJoint::setup_auxiliary()
   sta_->init(dataio, datasdyn, dataglobalstate);
   sta_->setup();
 
-  // setup wrapper
-  sta_wrapper_ = std::make_shared<Adapter::StructureTimeLoop>(sta_);
-
   const int restart = Global::Problem::instance()->restart();
   if (restart)
   {
+    sta_->post_setup();
+
     const Solid::TimeInt::Base& sti = *stm_;
     const auto& gstate = sti.data_global_state();
     dataglobalstate->get_dis_n()->update(1.0, *(gstate.get_dis_n()), 0.0);
@@ -239,6 +237,17 @@ void Adapter::StructureTimeAdaJoint::reset_step()
   sta_->set_time_np(time_ + stepsize_);
   // reset the integrator
   sta_->reset_step();
+}
+
+/*----------------------------------------------------------------------*/
+/*----------------------------------------------------------------------*/
+void Adapter::StructureTimeAdaJoint::post_setup()
+{
+  // base post setup
+  Adapter::StructureTimeAda::post_setup();
+
+  // post setup the auxiliary time integrator
+  sta_->post_setup();
 }
 
 FOUR_C_NAMESPACE_CLOSE

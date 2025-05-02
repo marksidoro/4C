@@ -28,7 +28,7 @@ namespace Discret
 
      protected:
       //! number of element nodes
-      static constexpr int nen_ = Core::FE::num_nodes<distype>;
+      static constexpr int nen_ = Core::FE::num_nodes(distype);
 
       //! protected constructor for singletons
       ScaTraEleSTIElch(const int numdofpernode, const int numscal, const std::string& disname);
@@ -116,7 +116,7 @@ namespace Discret
     {
      public:
       //! abbreviation
-      typedef ScaTraEleInternalVariableManager<nsd, nen> vm;
+      using vm = ScaTraEleInternalVariableManager<nsd, nen>;
 
       //! constructor
       ScaTraEleInternalVariableManagerSTIElch(const int& numscal)

@@ -409,7 +409,7 @@ namespace Cut
     double scalar_from_local_to_global(
         double scalar, std::string transformType, bool shadow = false)
     {
-      const int nen = Core::FE::num_nodes<distype>;
+      const int nen = Core::FE::num_nodes(distype);
       const int dim = Core::FE::dim<distype>;
       Core::LinAlg::Matrix<probdim, nen> xyze;
       Core::LinAlg::Matrix<probdim, 1> xei;
@@ -636,7 +636,7 @@ namespace Cut
    *
    *  */
   template <unsigned probdim, Core::FE::CellType elementtype,
-      unsigned num_nodes_element = Core::FE::num_nodes<elementtype>,
+      unsigned num_nodes_element = Core::FE::num_nodes(elementtype),
       unsigned dim = Core::FE::dim<elementtype>>
   class ConcreteElement : public Element
   {
@@ -846,7 +846,7 @@ namespace Cut
       eval_derivs_in_parameter_space<probdim, elementtype>(
           xyze, rst, deriv1, metrictensor, xjm, &xij, &normalvec1, &normalvec2, true);
 
-      // compute global first derivates
+      // compute global first derivatives
       derxy.multiply(xij, deriv1);
       //----------------------------------
 
@@ -1020,10 +1020,6 @@ namespace Cut
       return e;
     }
   };
-
-  // typedef EntityIdLess<Element> ElementIdLess;
-  //
-  // inline int EntityId( const Element & e ) { return e.Id(); }
 
 }  // namespace Cut
 

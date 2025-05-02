@@ -7,7 +7,6 @@
 
 #include "4C_levelset_timint_ost.hpp"
 
-#include "4C_inpar_validparameters.hpp"
 #include "4C_io.hpp"
 #include "4C_io_pstream.hpp"
 #include "4C_linalg_utils_sparse_algebra_manipulation.hpp"
@@ -243,8 +242,6 @@ void ScaTra::LevelSetTimIntOneStepTheta::redistribute(Core::LinAlg::Graph& nodeg
     fsphinp_ = Core::LinAlg::create_vector(*newdofrowmap, true);
     Core::LinAlg::export_to(*old, *fsphinp_);
   }
-
-  return;
 }
 
 

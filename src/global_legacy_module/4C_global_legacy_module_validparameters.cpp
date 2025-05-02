@@ -5,7 +5,7 @@
 //
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
-#include "4C_inpar_validparameters.hpp"
+#include "4C_global_legacy_module_validparameters.hpp"
 
 #include "4C_ale_input.hpp"
 #include "4C_beamcontact_input.hpp"
@@ -53,7 +53,6 @@
 #include "4C_inpar_ssti.hpp"
 #include "4C_inpar_sti.hpp"
 #include "4C_inpar_structure.hpp"
-#include "4C_inpar_tsi.hpp"
 #include "4C_inpar_volmortar.hpp"
 #include "4C_inpar_wear.hpp"
 #include "4C_inpar_xfem.hpp"
@@ -64,7 +63,9 @@
 #include "4C_porofluid_pressure_based_elast_input.hpp"
 #include "4C_porofluid_pressure_based_elast_scatra_input.hpp"
 #include "4C_porofluid_pressure_based_input.hpp"
+#include "4C_red_airways_input.hpp"
 #include "4C_thermo_input.hpp"
+#include "4C_tsi_input.hpp"
 
 #include <Teuchos_any.hpp>
 #include <Teuchos_Array.hpp>
@@ -81,7 +82,7 @@ FOUR_C_NAMESPACE_OPEN
 
 
 
-std::map<std::string, Core::IO::InputSpec> Input::valid_parameters()
+std::map<std::string, Core::IO::InputSpec> Global::valid_parameters()
 {
   using namespace Core::IO::InputSpecBuilders;
   std::map<std::string, Core::IO::InputSpec> specs;
@@ -195,13 +196,13 @@ std::map<std::string, Core::IO::InputSpec> Input::valid_parameters()
   Inpar::Plasticity::set_valid_parameters(specs);
 
   Thermo::set_valid_parameters(specs);
-  Inpar::TSI::set_valid_parameters(specs);
+  TSI::set_valid_parameters(specs);
 
   Inpar::FLUID::set_valid_parameters(specs);
   Inpar::LowMach::set_valid_parameters(specs);
   Cut::set_valid_parameters(specs);
   Inpar::XFEM::set_valid_parameters(specs);
-  Inpar::CONSTRAINTS::set_valid_parameters(specs);
+  Inpar::Constraints::set_valid_parameters(specs);
 
   Lubrication::set_valid_parameters(specs);
   Inpar::ScaTra::set_valid_parameters(specs);
@@ -226,7 +227,7 @@ std::map<std::string, Core::IO::InputSpec> Input::valid_parameters()
   Inpar::ArtDyn::set_valid_parameters(specs);
   Inpar::ArteryNetwork::set_valid_parameters(specs);
   Inpar::BioFilm::set_valid_parameters(specs);
-  Inpar::ReducedLung::set_valid_parameters(specs);
+  Airway::set_valid_parameters(specs);
   Inpar::Cardiovascular0D::set_valid_parameters(specs);
   Inpar::FPSI::set_valid_parameters(specs);
   FBI::set_valid_parameters(specs);

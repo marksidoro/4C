@@ -778,7 +778,7 @@ void FLD::XFluid::assemble_mat_and_rhs(int itnum)
 
     //-------------------------------------------------------------------------------
     // finalize the complete matrix
-    // REMARK: for EpetraFECrs matrices Complete() calls the GlobalAssemble() routine to gather
+    // REMARK: for matrices Complete() calls the GlobalAssemble() routine to gather
     // entries from all processors and calls a fill_complete for the first run. For further
     // Newton-steps then the optimized FEAssemble routine is used for speedup.
     state_->sysmat_->complete();
@@ -838,7 +838,7 @@ void FLD::XFluid::assemble_mat_and_rhs_vol_terms()
   const int numrowele = discret_->num_my_row_elements();
 
   // REMARK: in this XFEM framework the whole evaluate routine uses only row elements
-  // and assembles into EpetraFECrs matrix
+  // and assembles into matrix
   // this is 4C-unusual but more efficient in all XFEM applications
   for (int i = 0; i < numrowele; ++i)
   {
@@ -1212,8 +1212,7 @@ void FLD::XFluid::assemble_mat_and_rhs_vol_terms()
             Core::Communication::my_mpi_rank(strategy.systemvector1()->get_comm()));
         {
           TEUCHOS_FUNC_TIME_MONITOR("FLD::XFluid::XFluidState::Evaluate 6) FEAssemble");
-          // calls the Assemble function for EpetraFECrs matrices including communication of non-row
-          // entries
+          // calls the Assemble function for matrices including communication of non-row entries
           state_->sysmat_->fe_assemble(strategy.elematrix1(), la[0].lm_, myowner, la[0].lm_);
         }
         // REMARK:: call Assemble without lmowner
@@ -1262,8 +1261,7 @@ void FLD::XFluid::assemble_mat_and_rhs_vol_terms()
       {
         TEUCHOS_FUNC_TIME_MONITOR("FLD::XFluid::XFluidState::Evaluate 6) FEAssemble");
 
-        // calls the Assemble function for EpetraFECrs matrices including communication of non-row
-        // entries
+        // calls the Assemble function for matrices including communication of non-row entries
         state_->sysmat_->fe_assemble(strategy.elematrix1(), la[0].lm_, myowner, la[0].lm_);
       }
 
@@ -1305,7 +1303,7 @@ void FLD::XFluid::assemble_mat_and_rhs_face_terms(
     const int numrowintfaces = xdiscret->num_my_row_faces();
 
     // REMARK: in this XFEM framework the whole evaluate routine uses only row internal faces
-    // and assembles into EpetraFECrs matrix
+    // and assembles into matrix
     // this is 4C-unusual but more efficient in all XFEM applications
     for (int i = 0; i < numrowintfaces; ++i)
     {
@@ -1350,7 +1348,7 @@ void FLD::XFluid::integrate_shape_function(Teuchos::ParameterList& eleparams,
   const int numrowele = discret.num_my_row_elements();
 
   // REMARK: in this XFEM framework the whole evaluate routine uses only row elements
-  // and assembles into EpetraFECrs matrix
+  // and assembles into matrix
   // this is 4C-unusual but more efficient in all XFEM applications
   for (int i = 0; i < numrowele; ++i)
   {
@@ -1522,7 +1520,7 @@ void FLD::XFluid::integrate_shape_function(Teuchos::ParameterList& eleparams,
  |  evaluate gradient penalty terms to reconstruct ghost values  schott 03/12 |
  *----------------------------------------------------------------------*/
 void FLD::XFluid::assemble_mat_and_rhs_gradient_penalty(
-    Core::LinAlg::MapExtractor& ghost_penaly_dbcmaps,
+    Core::LinAlg::MapExtractor& ghost_penalty_dbcmaps,
     std::shared_ptr<Core::LinAlg::SparseMatrix> sysmat_gp,
     Core::LinAlg::Vector<double>& residual_gp, std::shared_ptr<Core::LinAlg::Vector<double>> vec)
 {
@@ -1571,7 +1569,7 @@ void FLD::XFluid::assemble_mat_and_rhs_gradient_penalty(
   // for which not ghost-penalty term has been assembled
   // for these rows we later have to assemble ones, as we solve for the whole vector
 
-  const Core::LinAlg::Map& dbctoggle = *(ghost_penaly_dbcmaps.cond_map());
+  const Core::LinAlg::Map& dbctoggle = *(ghost_penalty_dbcmaps.cond_map());
 
   bool diagonalblock = true;
 
@@ -1605,7 +1603,7 @@ void FLD::XFluid::assemble_mat_and_rhs_gradient_penalty(
 
   //-------------------------------------------------------------------------------
   // finalize the complete matrix
-  // REMARK: for EpetraFECrs matrices Complete() calls the GlobalAssemble() routine to gather
+  // REMARK: for matrices Complete() calls the GlobalAssemble() routine to gather
   // entries from all processors
   sysmat_gp->complete();
 
@@ -4084,7 +4082,7 @@ void FLD::XFluid::x_timint_ghost_penalty(std::vector<std::shared_ptr<Core::LinAl
   //----------------------------------------
   // object holds maps/subsets for DOFs subjected to Dirichlet BCs
   // which will not be modified by the ghost-penalty reconstruction
-  std::shared_ptr<Core::LinAlg::MapExtractor> ghost_penaly_dbcmaps =
+  std::shared_ptr<Core::LinAlg::MapExtractor> ghost_penalty_dbcmaps =
       create_dbc_map_extractor(dbcgids, dofrowmap);
 
   //----------------------------------------
@@ -4094,7 +4092,7 @@ void FLD::XFluid::x_timint_ghost_penalty(std::vector<std::shared_ptr<Core::LinAl
       vecs_it != rowVectors.end(); vecs_it++)
   {
     // reconstruct values using ghost penalty approach
-    x_timint_reconstruct_ghost_values(*vecs_it, *ghost_penaly_dbcmaps, screen_out);
+    x_timint_reconstruct_ghost_values(*vecs_it, *ghost_penalty_dbcmaps, screen_out);
   }
 
 
@@ -4109,8 +4107,8 @@ void FLD::XFluid::x_timint_ghost_penalty(std::vector<std::shared_ptr<Core::LinAl
 void FLD::XFluid::x_timint_reconstruct_ghost_values(
     std::shared_ptr<Core::LinAlg::Vector<double>> vec,  ///< vector to be reconstructed
     Core::LinAlg::MapExtractor&
-        ghost_penaly_dbcmaps,  ///< which dofs are fixed during the ghost-penalty reconstruction?
-    const bool screen_out      ///< screen output?
+        ghost_penalty_dbcmaps,  ///< which dofs are fixed during the ghost-penalty reconstruction?
+    const bool screen_out       ///< screen output?
 )
 {
   Core::Communication::barrier(discret_->get_comm());
@@ -4148,7 +4146,7 @@ void FLD::XFluid::x_timint_reconstruct_ghost_values(
   std::vector<int> numentries(state_->xfluiddofrowmap_->NumMyElements());
 
   const Core::LinAlg::Map& rowmap = *state_->xfluiddofrowmap_;
-  const Core::LinAlg::Map& condmap = *(ghost_penaly_dbcmaps.cond_map());
+  const Core::LinAlg::Map& condmap = *(ghost_penalty_dbcmaps.cond_map());
 
   for (unsigned i = 0; i < numentries.size(); ++i)
   {
@@ -4193,7 +4191,7 @@ void FLD::XFluid::x_timint_reconstruct_ghost_values(
     const double tcpu = Teuchos::Time::wallTime();
 
     // evaluate routine
-    assemble_mat_and_rhs_gradient_penalty(ghost_penaly_dbcmaps, sysmat_gp, *residual_gp, vec);
+    assemble_mat_and_rhs_gradient_penalty(ghost_penalty_dbcmaps, sysmat_gp, *residual_gp, vec);
 
     // end time measurement for element
     dtele_ = Teuchos::Time::wallTime() - tcpu;
@@ -4210,10 +4208,11 @@ void FLD::XFluid::x_timint_reconstruct_ghost_values(
     Core::Communication::barrier(discret_->get_comm());
 
     TEUCHOS_FUNC_TIME_MONITOR(
-        "FLD::XFluid::x_timint_reconstruct_ghost_values::ghost_penaly_dbcmaps->insert_cond_vector");
+        "FLD::XFluid::x_timint_reconstruct_ghost_values::ghost_penalty_dbcmaps->insert_cond_"
+        "vector");
 
-    ghost_penaly_dbcmaps.insert_cond_vector(
-        *ghost_penaly_dbcmaps.extract_cond_vector(*zeros_gp), *residual_gp);
+    ghost_penalty_dbcmaps.insert_cond_vector(
+        *ghost_penalty_dbcmaps.extract_cond_vector(*zeros_gp), *residual_gp);
   }
 
   //--------- Apply Dirichlet boundary conditions to system of equations
@@ -4227,7 +4226,7 @@ void FLD::XFluid::x_timint_reconstruct_ghost_values(
         "FLD::XFluid::x_timint_reconstruct_ghost_values::apply_dirichlet_to_system");
 
     Core::LinAlg::apply_dirichlet_to_system(
-        *sysmat_gp, *incvel_gp, *residual_gp, *zeros_gp, *(ghost_penaly_dbcmaps.cond_map()));
+        *sysmat_gp, *incvel_gp, *residual_gp, *zeros_gp, *(ghost_penalty_dbcmaps.cond_map()));
   }
 
   //-------solve for residual displacements to correct incremental displacements

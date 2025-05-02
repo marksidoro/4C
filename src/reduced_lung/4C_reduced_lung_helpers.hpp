@@ -12,6 +12,7 @@
 
 #include "4C_comm_mpi_utils.hpp"
 #include "4C_global_data.hpp"
+#include "4C_io_discretization_visualization_writer_mesh.hpp"
 #include "4C_linalg_map.hpp"
 
 FOUR_C_NAMESPACE_OPEN
@@ -98,13 +99,14 @@ namespace ReducedLung
 
   struct Airway
   {
-    int global_equation_id;
-    int local_equation_id;
+    int global_element_id;
+    int local_element_id;
     int local_airway_id;
     AirwayType airway_type;
     // dofs: {p1, p2, q} for resistive airways; {p1, p2, q1, q2} for compliant airways
     std::vector<int> global_dof_ids{};
     int n_state_equations = 1;
+    // local dof ids in locally relevant dof map!
     std::vector<int> local_dof_ids{};
   };
 
@@ -117,23 +119,24 @@ namespace ReducedLung
   // Save rheological model and (non-)linear elasticity separately
   struct TerminalUnit
   {
-    int global_equation_id;
-    int local_equation_id;
+    int global_element_id;
+    int local_element_id;
     int local_terminal_unit_id;
     TerminalUnitType tu_type;
     double E;
     double eta;
     std::vector<int> global_dof_ids{};
     int n_state_equations = 1;
+    // local dof ids in locally relevant dof map!
     std::vector<int> local_dof_ids{};
   };
 
   /*!
-   * @brief Create the Epetra map with the locally owned dofs spanning the computation domain that
+   * @brief Create the map with the locally owned dofs spanning the computation domain that
    * are necessary for the solution vector.
    *
    * The 4C discretization gives a mpi distribution of the Reduced Lung elements. From this
-   * distribution and the knowledge about the number of dofs in every element, the new Epetra map
+   * distribution and the knowledge about the number of dofs in every element, the new map
    * mapping the local dofs to their global ids is created. Example: The dofs of element k have
    * global ids in the range first_global_dof_of_ele[k] to first_global_dof_of_ele[k] + dofs of
    * element k.
@@ -141,18 +144,18 @@ namespace ReducedLung
    * @param comm Communicator of the 4C discretization.
    * @param airways Vector of locally owned airways.
    * @param terminal_units Vector of locally owned terminal units.
-   * @return Epetra map specifying the dof-distribution over all ranks.
+   * @return map specifying the dof-distribution over all ranks.
    */
   Core::LinAlg::Map create_domain_map(const Epetra_Comm& comm, const std::vector<Airway>& airways,
       const std::vector<TerminalUnit>& terminal_units);
 
   /*!
-   * @brief Create the Epetra map with the locally owned row indices of the system matrix, i.e. the
+   * @brief Create the map with the locally owned row indices of the system matrix, i.e. the
    * distribution of the system's equation.
    *
    * The row indices are uniquely tied to the system equations. Given the locally owned
    * elements and nodes in the 4C discretization, the related equation ids are created and stored in
-   * this Epetra map. Every element provides state equations, every node provides information about
+   * this map. Every element provides state equations, every node provides information about
    * its elements. Depending on the number of connected elements at one node, different sets and
    * numbers of equations are needed.
    * Per owned element: one or two equations and row ids.
@@ -169,7 +172,7 @@ namespace ReducedLung
    * child element ids).
    * @param boundary_conditions Vector with boundary condition information. Here, only the boundary
    * element ids are needed.
-   * @return Epetra map with locally owned rows.
+   * @return map with locally owned rows.
    */
   Core::LinAlg::Map create_row_map(const Epetra_Comm& comm, const std::vector<Airway>& airways,
       const std::vector<TerminalUnit>& terminal_units, const std::vector<Connection>& connections,
@@ -177,7 +180,7 @@ namespace ReducedLung
       const std::vector<BoundaryCondition>& boundary_conditions);
 
   /*!
-   * @brief Create the Epetra map with the dof indices relevant for the locally owned
+   * @brief Create the map with the dof indices relevant for the locally owned
    * equations/rows.
    *
    * This map connects the equations (rows of matrix and rhs vector) with their relevant dofs.
@@ -196,13 +199,19 @@ namespace ReducedLung
    * child element ids).
    * @param boundary_conditions Vector with boundary condition information. Here, only the boundary
    * element ids are needed.
-   * @return Epetra map with distribution of column indices for the system matrix.
+   * @return map with distribution of column indices for the system matrix.
    */
   Core::LinAlg::Map create_column_map(const Epetra_Comm& comm, const std::vector<Airway>& airways,
       const std::vector<TerminalUnit>& terminal_units, const std::map<int, int>& global_dof_per_ele,
       const std::map<int, int>& first_global_dof_of_ele, const std::vector<Connection>& connections,
       const std::vector<Bifurcation>& bifurcations,
       const std::vector<BoundaryCondition>& boundary_conditions);
+
+  void collect_runtime_output_data(
+      Core::IO::DiscretizationVisualizationWriterMesh& visualization_writer,
+      const std::vector<Airway>& airways, const std::vector<TerminalUnit>& terminal_units,
+      const Core::LinAlg::Vector<double>& locally_relevant_dofs,
+      const Core::LinAlg::Map* element_row_map);
 }  // namespace ReducedLung
 
 FOUR_C_NAMESPACE_CLOSE

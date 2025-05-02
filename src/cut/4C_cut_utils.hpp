@@ -51,22 +51,22 @@ namespace Cut
 
 #ifdef CUT_USE_SORTED_VECTOR
 
-  typedef SortedVector<int> plain_int_set;
+  using plain_int_set = SortedVector<int>;
 
-  typedef SortedVector<Node*> plain_node_set;
-  typedef SortedVector<Edge*> plain_edge_set;
-  typedef SortedVector<Side*> plain_side_set;
-  typedef SortedVector<Element*> plain_element_set;
+  using plain_node_set = SortedVector<Node*>;
+  using plain_edge_set = SortedVector<Edge*>;
+  using plain_side_set = SortedVector<Side*>;
+  using plain_element_set = SortedVector<Element*>;
 
-  typedef SortedVector<Point*> plain_point_set;
-  typedef SortedVector<Line*> plain_line_set;
-  typedef SortedVector<Facet*> plain_facet_set;
-  typedef SortedVector<VolumeCell*> plain_volumecell_set;
+  using plain_point_set = SortedVector<Point*>;
+  using plain_line_set = SortedVector<Line*>;
+  using plain_facet_set = SortedVector<Facet*>;
+  using plain_volumecell_set = SortedVector<VolumeCell*>;
 
-  typedef SortedVector<std::pair<Point*, Point*>> point_line_set;
+  using point_line_set = SortedVector<std::pair<Point*, Point*>>;
 
-  typedef SortedVector<BoundaryCell*> plain_boundarycell_set;
-  typedef SortedVector<IntegrationCell*> plain_integrationcell_set;
+  using plain_boundarycell_set = SortedVector<BoundaryCell*>;
+  using plain_integrationcell_set = SortedVector<IntegrationCell*>;
 
   template <class Set>
   void set_erase(Set& s, typename Set::iterator& i)
@@ -76,22 +76,22 @@ namespace Cut
 
 #else
 
-  typedef std::set<int> plain_int_set;
+  using plain_int_set = std::set<int>;
 
-  typedef std::set<Node*> plain_node_set;
-  typedef std::set<Edge*> plain_edge_set;
-  typedef std::set<Side*> plain_side_set;
-  typedef std::set<Element*> plain_element_set;
+  using plain_node_set = std::set<Node*>;
+  using plain_edge_set = std::set<Edge*>;
+  using plain_side_set = std::set<Side*>;
+  using plain_element_set = std::set<Element*>;
 
-  typedef std::set<Point*> plain_point_set;
-  typedef std::set<Line*> plain_line_set;
-  typedef std::set<Facet*> plain_facet_set;
-  typedef std::set<VolumeCell*> plain_volumecell_set;
+  using plain_point_set = std::set<Point*>;
+  using plain_line_set = std::set<Line*>;
+  using plain_facet_set = std::set<Facet*>;
+  using plain_volumecell_set = std::set<VolumeCell*>;
 
-  typedef std::set<std::pair<Point*, Point*>> point_line_set;
+  using point_line_set = std::set<std::pair<Point*, Point*>>;
 
-  typedef std::set<BoundaryCell*> plain_boundarycell_set;
-  typedef std::set<IntegrationCell*> plain_integrationcell_set;
+  using plain_boundarycell_set = std::set<BoundaryCell*>;
+  using plain_integrationcell_set = std::set<IntegrationCell*>;
 
   template <class set>
   void set_erase(set& s, typename set::iterator& i)
@@ -137,7 +137,7 @@ namespace Cut
 
    *  */
   template <unsigned probdim, Core::FE::CellType distype, typename Valtype,
-      unsigned num_nodes_element = Core::FE::num_nodes<distype>,
+      unsigned num_nodes_element = Core::FE::num_nodes(distype),
       unsigned dim = Core::FE::dim<distype>>
   Valtype eval_derivs_in_parameter_space(
       const Core::LinAlg::Matrix<probdim, num_nodes_element, Valtype>& xyze,
@@ -252,7 +252,7 @@ namespace Cut
    *
    */
   template <unsigned probdim, Core::FE::CellType distype, typename Valtype,
-      unsigned num_nodes_element = Core::FE::num_nodes<distype>,
+      unsigned num_nodes_element = Core::FE::num_nodes(distype),
       unsigned dim = Core::FE::dim<distype>>
   inline Valtype eval_derivs_in_parameter_space(
       const Core::LinAlg::Matrix<probdim, num_nodes_element, Valtype>& xyze,
@@ -377,7 +377,7 @@ namespace Cut
    *
    *  */
   template <unsigned probdim, Core::FE::CellType distype, class T1, class T2, class T3,
-      unsigned num_nodes_element = Core::FE::num_nodes<distype>,
+      unsigned num_nodes_element = Core::FE::num_nodes(distype),
       unsigned dim = Core::FE::dim<distype>>
   void eval_normal_vectors(const T1& xyze, const T2& rst, T3& normalvec1, T3* normalvec2 = nullptr,
       bool unit_normal = true)

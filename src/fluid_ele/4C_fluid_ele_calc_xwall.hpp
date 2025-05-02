@@ -25,7 +25,7 @@ namespace Discret
     template <Core::FE::CellType distype, Discret::Elements::Fluid::EnrichmentType enrtype>
     class FluidEleCalcXWall : public FluidEleCalc<distype, enrtype>
     {
-      typedef Discret::Elements::FluidEleCalc<distype, enrtype> my;
+      using my = Discret::Elements::FluidEleCalc<distype, enrtype>;
 
       using my::nen_;
       using my::nsd_;
@@ -56,12 +56,10 @@ namespace Discret
 
       int evaluate(Discret::Elements::Fluid* ele, Core::FE::Discretization& discretization,
           const std::vector<int>& lm, Teuchos::ParameterList& params,
-          std::shared_ptr<Core::Mat::Material>& mat,
-          Core::LinAlg::SerialDenseMatrix& elemat1_epetra,
-          Core::LinAlg::SerialDenseMatrix& elemat2_epetra,
-          Core::LinAlg::SerialDenseVector& elevec1_epetra,
-          Core::LinAlg::SerialDenseVector& elevec2_epetra,
-          Core::LinAlg::SerialDenseVector& elevec3_epetra, bool offdiag = false) override;
+          std::shared_ptr<Core::Mat::Material>& mat, Core::LinAlg::SerialDenseMatrix& elemat1,
+          Core::LinAlg::SerialDenseMatrix& elemat2, Core::LinAlg::SerialDenseVector& elevec1,
+          Core::LinAlg::SerialDenseVector& elevec2, Core::LinAlg::SerialDenseVector& elevec3,
+          bool offdiag = false) override;
 
       void sysmat(const Core::LinAlg::Matrix<nsd_, nen_>& ebofoaf,
           const Core::LinAlg::Matrix<nsd_, nen_>& eprescpgaf,
@@ -112,7 +110,7 @@ namespace Discret
           ) override;
 
      private:
-      const static int enren_ = Core::FE::num_nodes<distype>;
+      const static int enren_ = Core::FE::num_nodes(distype);
 
       /// private Constructor since we are a Singleton.
       FluidEleCalcXWall();

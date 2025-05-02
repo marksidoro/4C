@@ -23,29 +23,6 @@ namespace Core::Conditions
   class ConditionDefinition;
 }
 
-// ToDo: move these enums to namespace Inpar::ArteryNetwork etc.
-//       is the typedef really needed?
-
-/*!----------------------------------------------------------------------
-\brief enum of arterial network dynamic types
-This is the enumeration of all types of different integration schemes
-
-*-----------------------------------------------------------------------*/
-
-
-/*!----------------------------------------------------------------------
-\brief enum of reduced dimensional airways dynamic types
-This is the enumeration of all types of different integration schemes
-
-*-----------------------------------------------------------------------*/
-typedef enum RedAirwaysDyntype
-{
-  one_step_theta,
-  linear,
-  nonlinear
-} _RED_AIRWAYS_DYNTYPE;
-
-
 namespace Inpar
 {
   namespace ArtDyn
@@ -118,14 +95,6 @@ namespace Inpar
     void set_valid_conditions(std::vector<Core::Conditions::ConditionDefinition>& condlist);
   }  // namespace BioFilm
 
-  namespace ReducedLung
-  {
-    /// set the reduced airways parameters
-    void set_valid_parameters(std::map<std::string, Core::IO::InputSpec>& list);
-
-    /// set specific reduced airways conditions
-    void set_valid_conditions(std::vector<Core::Conditions::ConditionDefinition>& condlist);
-  }  // namespace ReducedLung
 }  // namespace Inpar
 
 /*----------------------------------------------------------------------*/

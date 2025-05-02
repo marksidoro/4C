@@ -334,7 +334,7 @@ void XFEM::XFluidContactComm::get_states(const int fluidele_id, const std::vecto
   }
 
   // 2 // get element xyze
-  /// element coordinates in EpetraMatrix
+  /// element coordinates in matrix
   ele_xyze.shape(3, fluidele->num_node());
   for (int i = 0; i < fluidele->num_node(); ++i)
   {
@@ -377,7 +377,7 @@ void XFEM::XFluidContactComm::get_states(const int fluidele_id, const std::vecto
       // double det = xji.invert(xjm); //if we need this at some point
       xji.invert(xjm);
 
-      // compute global first derivates
+      // compute global first derivatives
       derxy.multiply(xji, deriv);
 
       static Core::LinAlg::Matrix<3, 8> vel;
@@ -412,7 +412,7 @@ void XFEM::XFluidContactComm::get_states(const int fluidele_id, const std::vecto
       }
     }
 
-    const int numnodes = Core::FE::num_nodes<Core::FE::CellType::quad4>;
+    const int numnodes = Core::FE::num_nodes(Core::FE::CellType::quad4);
     static Core::LinAlg::Matrix<numnodes, 1> funct(Core::LinAlg::Initialization::uninitialized);
     Core::FE::shape_function_2d(funct, selexsi(0), selexsi(1), Core::FE::CellType::quad4);
     vel_s.multiply(vels, funct);
@@ -653,7 +653,7 @@ bool XFEM::XFluidContactComm::get_volumecell(Discret::Elements::SolidSurface*& s
   volumecell = nullptr;
   if (sele->shape() == Core::FE::CellType::quad4)
   {
-    const int numnodes = Core::FE::num_nodes<Core::FE::CellType::quad4>;
+    const int numnodes = Core::FE::num_nodes(Core::FE::CellType::quad4);
 
     Core::LinAlg::SerialDenseMatrix xyze_m;
     Core::LinAlg::Matrix<numnodes, 1> funct(Core::LinAlg::Initialization::uninitialized);
@@ -1130,7 +1130,7 @@ void XFEM::XFluidContactComm::get_cut_side_integration_points(
   Cut::SideHandle* sh = cutwizard_->get_cut_side(get_surf_sid(sid));
   if (!sh) FOUR_C_THROW("Couldn't get SideHandle!");
   if (sh->shape() != Core::FE::CellType::quad4) FOUR_C_THROW("Not a quad4!");
-  const int numnodes_sh = Core::FE::num_nodes<Core::FE::CellType::quad4>;
+  const int numnodes_sh = Core::FE::num_nodes(Core::FE::CellType::quad4);
   Core::LinAlg::SerialDenseMatrix xquad;
   sh->coordinates(xquad);
   Core::LinAlg::Matrix<2, numnodes_sh> deriv(Core::LinAlg::Initialization::uninitialized);

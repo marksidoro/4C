@@ -846,7 +846,7 @@ namespace
             eb_id);
 
         const auto& element_name = current_block_data->get<std::string>("ELEMENT_NAME");
-        const auto cell_type = Core::IO::Exodus::shape_to_cell_type(eb.get_shape());
+        const auto cell_type = eb.get_shape();
         const auto cell_type_string = Core::FE::cell_type_to_string(cell_type);
 
         Core::Elements::ElementDefinition ed;
@@ -858,8 +858,7 @@ namespace
         // number of dummy nodes (that we are not going to use).
         std::stringstream ss;
         ss << cell_type_string;
-        const int numnodes = Core::FE::cell_type_switch(
-            cell_type, [](auto cell_type_t) { return Core::FE::num_nodes<cell_type_t()>; });
+        const int numnodes = Core::FE::num_nodes(cell_type);
         for (int i = 0; i < numnodes; ++i) ss << " " << 0;  // dummy node id
         ss << " " << current_block_data->get<std::string>("ELEMENT_DATA");
         std::string element_string = ss.str();
@@ -870,7 +869,7 @@ namespace
         linedef.fully_parse(element_parser, element_data);
 
 
-        for (const auto& ele_nodes : *eb.get_ele_conn() | std::views::values)
+        for (const auto& ele_nodes : eb.get_ele_conn() | std::views::values)
         {
           auto ele = Core::Communication::factory(element_name, cell_type_string, ele_count, 0);
           if (!ele) FOUR_C_THROW("element creation failed");

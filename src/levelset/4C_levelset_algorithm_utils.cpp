@@ -370,7 +370,7 @@ void ScaTra::LevelSetAlgorithm::apply_contact_point_boundary_condition()
             // in case of further distypes, move the following block to a templated function
             {
               // get number of element nodes
-              const int nen = Core::FE::num_nodes<distype>;
+              const int nen = Core::FE::num_nodes(distype);
               // get number of space dimensions
               const int nsd = Core::FE::dim<distype>;
 
@@ -992,7 +992,7 @@ void ScaTra::LevelSetAlgorithm::redistribute(Core::LinAlg::Graph& nodegraph)
   //      to be redistributed, too
   FOUR_C_THROW("Fix Redistribution!");
   //--------------------------------------------------------------------
-  // Now update all Core::LinAlg::Vectors and Epetra_Matrix to the new dofmap
+  // Now update all vectors and matrices to the new dofmap
   //--------------------------------------------------------------------
 
   discret_->compute_null_space_if_necessary(solver_->params(), true);

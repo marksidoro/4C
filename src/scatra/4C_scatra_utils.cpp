@@ -354,7 +354,7 @@ Core::LinAlg::Matrix<dim, 1> ScaTra::ScaTraUtils::do_mean_value_averaging_of_ele
     Core::LinAlg::Vector<double>& phinp_node, const int nodegid, const int scatra_dofid)
 {
   // number of nodes of this element for interpolation
-  const int numnode = Core::FE::num_nodes<distype>;
+  const int numnode = Core::FE::num_nodes(distype);
   Core::LinAlg::Matrix<dim, 1> node_gradphi_smoothed(Core::LinAlg::Initialization::zero);
 
   // number of elements located around this node
@@ -455,7 +455,7 @@ Core::LinAlg::Matrix<dim, 1> ScaTra::ScaTraUtils::do_mean_value_averaging_of_ele
       static Core::LinAlg::Matrix<dim, dim> xji_ele_XiToXYZ;
       xji_ele_XiToXYZ.invert(xjm_ele_XiToXYZ);
 
-      // set XYZ-derivates of shapefunctions
+      // set XYZ-derivatives of shapefunctions
       deriv3Dele_xyz.multiply(xji_ele_XiToXYZ, deriv3Dele);
 
       //----------------------------------------------------

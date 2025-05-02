@@ -61,15 +61,15 @@ namespace
   template <SpringDashpotEvaluable SpringDashpot, Core::FE::CellType celltype, unsigned int dim>
   void add_robin_spring_dashpot_contribution_xyz(const Core::Elements::Element& surface_element,
       const Core::Elements::ElementNodes<celltype, dim> element_nodes,
-      const Core::LinAlg::Matrix<dim, Core::FE::num_nodes<celltype>>& displacements,
-      const Core::LinAlg::Matrix<dim, Core::FE::num_nodes<celltype>>& displacement_offset,
+      const Core::LinAlg::Matrix<dim, Core::FE::num_nodes(celltype)>& displacements,
+      const Core::LinAlg::Matrix<dim, Core::FE::num_nodes(celltype)>& displacement_offset,
       const std::vector<double>& constant_offset,
-      const Core::LinAlg::Matrix<dim, Core::FE::num_nodes<celltype>>& velocity,
+      const Core::LinAlg::Matrix<dim, Core::FE::num_nodes(celltype)>& velocity,
       const std::vector<SpringDashpot>& spring_dashpot_evaluator, const double time_factor,
       const Core::FE::GaussIntegration& gauss_integration, const std::vector<bool>& onoff,
-      std::optional<Core::LinAlg::Matrix<dim * Core::FE::num_nodes<celltype>, 1>>& residual_vector,
-      std::optional<Core::LinAlg::Matrix<dim * Core::FE::num_nodes<celltype>,
-          dim * Core::FE::num_nodes<celltype>>>& stiffness_matrix)
+      std::optional<Core::LinAlg::Matrix<dim * Core::FE::num_nodes(celltype), 1>>& residual_vector,
+      std::optional<Core::LinAlg::Matrix<dim * Core::FE::num_nodes(celltype),
+          dim * Core::FE::num_nodes(celltype)>>& stiffness_matrix)
   {
     Core::Elements::for_each_gauss_point<celltype>(element_nodes, gauss_integration,
         [&](const Core::LinAlg::Matrix<Core::FE::dim<celltype>, 1>& xi,
@@ -102,7 +102,7 @@ namespace
             // evaluate residual force
             if (residual_vector)
             {
-              for (int node = 0; node < Core::FE::num_nodes<celltype>; ++node)
+              for (int node = 0; node < Core::FE::num_nodes(celltype); ++node)
                 residual_vector.value()(node * dim + axis_direction) +=
                     shape_functions.values(node) * force * integration_factor;
             }
@@ -110,9 +110,9 @@ namespace
             // evaluate stiffness matrix
             if (stiffness_matrix)
             {
-              for (int i = 0; i < Core::FE::num_nodes<celltype>; ++i)
+              for (int i = 0; i < Core::FE::num_nodes(celltype); ++i)
               {
-                for (int j = 0; j < Core::FE::num_nodes<celltype>; ++j)
+                for (int j = 0; j < Core::FE::num_nodes(celltype); ++j)
                 {
                   (*stiffness_matrix)(i* dim + axis_direction, j * dim + axis_direction) +=
                       shape_functions.values(i) * shape_functions.values(j) *
@@ -146,15 +146,15 @@ namespace
   void add_robin_spring_dashpot_contribution_ref_normal(
       const Core::Elements::Element& surface_element,
       const Core::Elements::ElementNodes<celltype, dim> element_nodes,
-      const Core::LinAlg::Matrix<dim, Core::FE::num_nodes<celltype>>& displacements,
-      const Core::LinAlg::Matrix<dim, Core::FE::num_nodes<celltype>>& displacement_offset,
+      const Core::LinAlg::Matrix<dim, Core::FE::num_nodes(celltype)>& displacements,
+      const Core::LinAlg::Matrix<dim, Core::FE::num_nodes(celltype)>& displacement_offset,
       double constant_offset,
-      const Core::LinAlg::Matrix<dim, Core::FE::num_nodes<celltype>>& velocity,
+      const Core::LinAlg::Matrix<dim, Core::FE::num_nodes(celltype)>& velocity,
       const SpringDashpot& spring_dashpot_evaluator, const double time_factor,
       const Core::FE::GaussIntegration& gauss_integration,
-      std::optional<Core::LinAlg::Matrix<dim * Core::FE::num_nodes<celltype>, 1>>& residual_vector,
-      std::optional<Core::LinAlg::Matrix<dim * Core::FE::num_nodes<celltype>,
-          dim * Core::FE::num_nodes<celltype>>>& stiffness_matrix)
+      std::optional<Core::LinAlg::Matrix<dim * Core::FE::num_nodes(celltype), 1>>& residual_vector,
+      std::optional<Core::LinAlg::Matrix<dim * Core::FE::num_nodes(celltype),
+          dim * Core::FE::num_nodes(celltype)>>& stiffness_matrix)
   {
     // compute nodal normals of the element
     Core::Elements::for_each_gauss_point<celltype>(element_nodes, gauss_integration,
@@ -186,7 +186,7 @@ namespace
           {
             for (unsigned axis_direction = 0; axis_direction < dim; ++axis_direction)
             {
-              for (int node = 0; node < Core::FE::num_nodes<celltype>; ++node)
+              for (int node = 0; node < Core::FE::num_nodes(celltype); ++node)
               {
                 residual_vector.value()(node * dim + axis_direction) +=
                     shape_functions.values(node) * force * normal_at_gp(axis_direction) *
@@ -202,9 +202,9 @@ namespace
             {
               for (unsigned axis_direction2 = 0; axis_direction2 < dim; ++axis_direction2)
               {
-                for (int i = 0; i < Core::FE::num_nodes<celltype>; ++i)
+                for (int i = 0; i < Core::FE::num_nodes(celltype); ++i)
                 {
-                  for (int j = 0; j < Core::FE::num_nodes<celltype>; ++j)
+                  for (int j = 0; j < Core::FE::num_nodes(celltype); ++j)
                   {
                     (*stiffness_matrix)(i* dim + axis_direction1, j * dim + axis_direction2) +=
                         shape_functions.values(i) * shape_functions.values(j) *
@@ -223,7 +223,7 @@ namespace
 /*----------------------------------------------------------------------*
  |                                                         pfaller Apr15|
  *----------------------------------------------------------------------*/
-CONSTRAINTS::SpringDashpot::SpringDashpot(std::shared_ptr<Core::FE::Discretization> dis,
+Constraints::SpringDashpot::SpringDashpot(std::shared_ptr<Core::FE::Discretization> dis,
     std::shared_ptr<Core::Conditions::Condition> cond)
     : actdisc_(std::move(dis)),
       spring_(std::move(cond)),
@@ -293,7 +293,7 @@ CONSTRAINTS::SpringDashpot::SpringDashpot(std::shared_ptr<Core::FE::Discretizati
 /*----------------------------------------------------------------------*
  * Integrate a Surface Robin boundary condition (public)       mhv 08/16|
  * ---------------------------------------------------------------------*/
-void CONSTRAINTS::SpringDashpot::evaluate_robin(std::shared_ptr<Core::LinAlg::SparseMatrix> stiff,
+void Constraints::SpringDashpot::evaluate_robin(std::shared_ptr<Core::LinAlg::SparseMatrix> stiff,
     std::shared_ptr<Core::LinAlg::Vector<double>> fint,
     const std::shared_ptr<const Core::LinAlg::Vector<double>> disp,
     const std::shared_ptr<const Core::LinAlg::Vector<double>> velo, Teuchos::ParameterList p)
@@ -429,7 +429,7 @@ void CONSTRAINTS::SpringDashpot::evaluate_robin(std::shared_ptr<Core::LinAlg::Sp
                       *actdisc_, *curr.second);
 
               std::optional<
-                  Core::LinAlg::Matrix<num_dof_per_node * Core::FE::num_nodes<celltype>, 1>>
+                  Core::LinAlg::Matrix<num_dof_per_node * Core::FE::num_nodes(celltype), 1>>
                   residual_vector;
               if (assvec)
               {
@@ -437,19 +437,19 @@ void CONSTRAINTS::SpringDashpot::evaluate_robin(std::shared_ptr<Core::LinAlg::Sp
                 residual_vector.value().clear();
               }
 
-              std::optional<Core::LinAlg::Matrix<num_dof_per_node * Core::FE::num_nodes<celltype>,
-                  num_dof_per_node * Core::FE::num_nodes<celltype>>>
+              std::optional<Core::LinAlg::Matrix<num_dof_per_node * Core::FE::num_nodes(celltype),
+                  num_dof_per_node * Core::FE::num_nodes(celltype)>>
                   stiffness_matrix;
               if (assmat)
               {
                 stiffness_matrix.emplace(elestiff.values(), true);
                 (*stiffness_matrix).clear();
               }
-              const Core::LinAlg::Matrix<num_dof_per_node, Core::FE::num_nodes<celltype>>
+              const Core::LinAlg::Matrix<num_dof_per_node, Core::FE::num_nodes(celltype)>
                   ele_displacements =
                       Core::FE::get_element_dof_matrix<celltype, num_dof_per_node>(displacements);
 
-              const Core::LinAlg::Matrix<num_dof_per_node, Core::FE::num_nodes<celltype>>
+              const Core::LinAlg::Matrix<num_dof_per_node, Core::FE::num_nodes(celltype)>
                   nodal_offset = Core::FE::get_element_dof_matrix<celltype, num_dof_per_node>(
                       displacement_offset);
 
@@ -462,7 +462,7 @@ void CONSTRAINTS::SpringDashpot::evaluate_robin(std::shared_ptr<Core::LinAlg::Sp
               }
 
 
-              Core::LinAlg::Matrix<num_dof_per_node, Core::FE::num_nodes<celltype>>
+              Core::LinAlg::Matrix<num_dof_per_node, Core::FE::num_nodes(celltype)>
                   velocity_matrix =
                       Core::FE::get_element_dof_matrix<celltype, num_dof_per_node>(velocities);
 
@@ -631,7 +631,7 @@ void CONSTRAINTS::SpringDashpot::evaluate_robin(std::shared_ptr<Core::LinAlg::Sp
 /*----------------------------------------------------------------------*
  |                                                         pfaller Mar16|
  *----------------------------------------------------------------------*/
-void CONSTRAINTS::SpringDashpot::evaluate_force(Core::LinAlg::Vector<double>& fint,
+void Constraints::SpringDashpot::evaluate_force(Core::LinAlg::Vector<double>& fint,
     const std::shared_ptr<const Core::LinAlg::Vector<double>> disp,
     const Core::LinAlg::Vector<double>& vel, const Teuchos::ParameterList& p)
 {
@@ -656,7 +656,7 @@ void CONSTRAINTS::SpringDashpot::evaluate_force(Core::LinAlg::Vector<double>& fi
           offset_prestr_[gid];  // get nodal displacement values of last time step for MULF offset
 
       const int numdof = actdisc_->num_dof(0, node);
-      assert(numdof == 3);
+      FOUR_C_ASSERT(numdof == 3, "Only implemented for 3 DoFs per node.");
       std::vector<int> dofs = actdisc_->dof(0, node);
 
       // initialize
@@ -746,7 +746,7 @@ void CONSTRAINTS::SpringDashpot::evaluate_force(Core::LinAlg::Vector<double>& fi
 /*----------------------------------------------------------------------*
  |                                                         pfaller mar16|
  *----------------------------------------------------------------------*/
-void CONSTRAINTS::SpringDashpot::evaluate_force_stiff(Core::LinAlg::SparseMatrix& stiff,
+void Constraints::SpringDashpot::evaluate_force_stiff(Core::LinAlg::SparseMatrix& stiff,
     Core::LinAlg::Vector<double>& fint,
     const std::shared_ptr<const Core::LinAlg::Vector<double>> disp,
     const Core::LinAlg::Vector<double>& vel, Teuchos::ParameterList p)
@@ -779,7 +779,7 @@ void CONSTRAINTS::SpringDashpot::evaluate_force_stiff(Core::LinAlg::SparseMatrix
                                      // offset
 
       const int numdof = actdisc_->num_dof(0, node);
-      assert(numdof == 3);
+      FOUR_C_ASSERT(numdof == 3, "Only implemented for 3 DoFs per node.");
       std::vector<int> dofs = actdisc_->dof(0, node);
 
       // initialize
@@ -895,7 +895,7 @@ void CONSTRAINTS::SpringDashpot::evaluate_force_stiff(Core::LinAlg::SparseMatrix
 /*----------------------------------------------------------------------*
  |                                                         pfaller Mar16|
  *----------------------------------------------------------------------*/
-void CONSTRAINTS::SpringDashpot::reset_newton()
+void Constraints::SpringDashpot::reset_newton()
 {
   // all springs
   gap_.clear();
@@ -914,7 +914,7 @@ void CONSTRAINTS::SpringDashpot::reset_newton()
 /*----------------------------------------------------------------------*
  |                                                             mhv 12/15|
  *----------------------------------------------------------------------*/
-void CONSTRAINTS::SpringDashpot::reset_prestress(const Core::LinAlg::Vector<double>& dis)
+void Constraints::SpringDashpot::reset_prestress(const Core::LinAlg::Vector<double>& dis)
 {
   // this should be sufficient, no need to loop over nodes anymore
   offset_prestr_new_->update(1.0, dis, 1.0);
@@ -931,7 +931,7 @@ void CONSTRAINTS::SpringDashpot::reset_prestress(const Core::LinAlg::Vector<doub
         if (!node) FOUR_C_THROW("Cannot find global node {}", node_gid);
 
         const int numdof = actdisc_->num_dof(0, node);
-        assert(numdof == 3);
+        FOUR_C_ASSERT(numdof == 3, "Only implemented for 3 DoFs per node.");
         std::vector<int> dofs = actdisc_->dof(0, node);
 
         // initialize. calculation of displacements differs for each spring variant
@@ -946,7 +946,7 @@ void CONSTRAINTS::SpringDashpot::reset_prestress(const Core::LinAlg::Vector<doub
 /*----------------------------------------------------------------------*
  |                                                             mhv 12/15|
  *----------------------------------------------------------------------*/
-void CONSTRAINTS::SpringDashpot::set_restart(Core::LinAlg::Vector<double>& vec)
+void Constraints::SpringDashpot::set_restart(Core::LinAlg::Vector<double>& vec)
 {
   offset_prestr_new_->update(1.0, vec, 0.0);
 }
@@ -954,7 +954,7 @@ void CONSTRAINTS::SpringDashpot::set_restart(Core::LinAlg::Vector<double>& vec)
 /*----------------------------------------------------------------------*
  |                                                             mhv 12/15|
  *----------------------------------------------------------------------*/
-void CONSTRAINTS::SpringDashpot::set_restart_old(Core::LinAlg::MultiVector<double>& vec)
+void Constraints::SpringDashpot::set_restart_old(Core::LinAlg::MultiVector<double>& vec)
 {
   // loop nodes of current condition
   for (int node_gid : *nodes_)
@@ -966,7 +966,7 @@ void CONSTRAINTS::SpringDashpot::set_restart_old(Core::LinAlg::MultiVector<doubl
       if (!node) FOUR_C_THROW("Cannot find global node {}", node_gid);
 
       [[maybe_unused]] const int numdof = actdisc_->num_dof(0, node);
-      assert(numdof == 3);
+      FOUR_C_ASSERT(numdof == 3, "Only implemented for 3 DoFs per node.");
       std::vector<int> dofs = actdisc_->dof(0, node);
 
 
@@ -996,7 +996,7 @@ void CONSTRAINTS::SpringDashpot::set_restart_old(Core::LinAlg::MultiVector<doubl
 /*----------------------------------------------------------------------*
  |                                                         pfaller Jan14|
  *----------------------------------------------------------------------*/
-void CONSTRAINTS::SpringDashpot::output_gap_normal(Core::LinAlg::Vector<double>& gap,
+void Constraints::SpringDashpot::output_gap_normal(Core::LinAlg::Vector<double>& gap,
     Core::LinAlg::MultiVector<double>& normals, Core::LinAlg::MultiVector<double>& stress) const
 {
   // export gap function
@@ -1042,7 +1042,7 @@ void CONSTRAINTS::SpringDashpot::output_gap_normal(Core::LinAlg::Vector<double>&
 /*----------------------------------------------------------------------*
  |                                                             mhv Dec15|
  *----------------------------------------------------------------------*/
-void CONSTRAINTS::SpringDashpot::output_prestr_offset(
+void Constraints::SpringDashpot::output_prestr_offset(
     Core::LinAlg::Vector<double>& springprestroffset) const
 {
   springprestroffset.update(1.0, *offset_prestr_new_, 0.0);
@@ -1051,7 +1051,7 @@ void CONSTRAINTS::SpringDashpot::output_prestr_offset(
 /*----------------------------------------------------------------------*
  |                                                             mhv Dec15|
  *----------------------------------------------------------------------*/
-void CONSTRAINTS::SpringDashpot::output_prestr_offset_old(
+void Constraints::SpringDashpot::output_prestr_offset_old(
     Core::LinAlg::MultiVector<double>& springprestroffset) const
 {
   // export spring offset length
@@ -1073,7 +1073,7 @@ void CONSTRAINTS::SpringDashpot::output_prestr_offset_old(
 /*-----------------------------------------------------------------------*
 |(private)                                                  pfaller Apr15|
  *-----------------------------------------------------------------------*/
-void CONSTRAINTS::SpringDashpot::initialize_cur_surf_normal()
+void Constraints::SpringDashpot::initialize_cur_surf_normal()
 {
   // create MORTAR interface
   mortar_ = std::make_shared<Adapter::CouplingNonLinMortar>(Global::Problem::instance()->n_dim(),
@@ -1102,7 +1102,7 @@ void CONSTRAINTS::SpringDashpot::initialize_cur_surf_normal()
 /*-----------------------------------------------------------------------*
 |(private) adapted from mhv 01/14                           pfaller Apr15|
  *-----------------------------------------------------------------------*/
-void CONSTRAINTS::SpringDashpot::get_area(
+void Constraints::SpringDashpot::get_area(
     const std::map<int, std::shared_ptr<Core::Elements::Element>>& geom)
 {
   for (const auto& ele : geom)
@@ -1231,7 +1231,7 @@ void CONSTRAINTS::SpringDashpot::get_area(
 /*-----------------------------------------------------------------------*
 |(private)                                                    mhv 12/2015|
  *-----------------------------------------------------------------------*/
-void CONSTRAINTS::SpringDashpot::initialize_prestr_offset()
+void Constraints::SpringDashpot::initialize_prestr_offset()
 {
   offset_prestr_.clear();
 
@@ -1245,7 +1245,7 @@ void CONSTRAINTS::SpringDashpot::initialize_prestr_offset()
       int numdof = actdisc_->num_dof(0, node);
       std::vector<int> dofs = actdisc_->dof(0, node);
 
-      assert(numdof == 3);
+      FOUR_C_ASSERT(numdof == 3, "Only implemented for 3 DoFs per node.");
 
       std::vector<double> temp(numdof, 0.0);
 
@@ -1259,7 +1259,7 @@ void CONSTRAINTS::SpringDashpot::initialize_prestr_offset()
 /*-----------------------------------------------------------------------*
 |(private)                                                  pfaller Apr15|
  *-----------------------------------------------------------------------*/
-void CONSTRAINTS::SpringDashpot::get_cur_normals(
+void Constraints::SpringDashpot::get_cur_normals(
     const std::shared_ptr<const Core::LinAlg::Vector<double>>& disp, Teuchos::ParameterList p)
 {
   // get current time step size
@@ -1288,7 +1288,7 @@ void CONSTRAINTS::SpringDashpot::get_cur_normals(
 /*-----------------------------------------------------------------------*
 |(private)                                                  pfaller Apr15|
  *-----------------------------------------------------------------------*/
-void CONSTRAINTS::SpringDashpot::set_spring_type()
+void Constraints::SpringDashpot::set_spring_type()
 {
   // get spring direction from condition
   springtype_ = spring_->parameters().get<RobinSpringDashpotType>("DIRECTION");
@@ -1296,12 +1296,12 @@ void CONSTRAINTS::SpringDashpot::set_spring_type()
 
 /*-----------------------------------------------------------------------*
  *-----------------------------------------------------------------------*/
-void CONSTRAINTS::SpringDashpot::update()
+void Constraints::SpringDashpot::update()
 {
   // store current time step
   gapn_ = gap_;
 }
 
-void CONSTRAINTS::SpringDashpot::reset_step_state() { gap_ = gapn_; }
+void Constraints::SpringDashpot::reset_step_state() { gap_ = gapn_; }
 
 FOUR_C_NAMESPACE_CLOSE
