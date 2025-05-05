@@ -656,12 +656,12 @@ namespace Core::FE
     );
 
    private:
-    static constexpr int max_nquad = 1000;  ///< size of c array
-    Core::FE::GaussRule3D intrule_;         ///< associated integration rule name
+    Core::FE::GaussRule3D intrule_;  ///< associated integration rule name
    public:
-    int nquad;                 ///< number of gausspoints
-    double qxg[max_nquad][3];  ///< coordinates
-    double qwgt[max_nquad];    ///< weights
+    static constexpr int max_nquad = 1000;  ///< size of c array
+    int nquad;                              ///< number of gausspoints
+    double qxg[max_nquad][3];               ///< coordinates
+    double qwgt[max_nquad];                 ///< weights
 
     /// gauss point coordinates
     const double* point(int point) const
@@ -692,12 +692,12 @@ namespace Core::FE
     );
 
    private:
-    static constexpr int max_nquad = 1024;  ///< size of c array
-    Core::FE::GaussRule2D intrule_;         ///< associated integration rule name
+    Core::FE::GaussRule2D intrule_;  ///< associated integration rule name
    public:
-    int nquad;                 ///< number of gausspoints
-    double qxg[max_nquad][2];  ///< coordinates
-    double qwgt[max_nquad];    ///< weights
+    static constexpr int max_nquad = 1024;  ///< size of c array
+    int nquad;                              ///< number of gausspoints
+    double qxg[max_nquad][2];               ///< coordinates
+    double qwgt[max_nquad];                 ///< weights
 
     /// gauss point coordinates
     const double* point(int point) const
@@ -726,12 +726,12 @@ namespace Core::FE
     );
 
    private:
-    static constexpr int max_nquad = 50;  ///< size of c array
-    Core::FE::GaussRule1D intrule_;       ///< associated integration rule name
+    Core::FE::GaussRule1D intrule_;  ///< associated integration rule name
    public:
-    int nquad;                 ///< number of integration points
-    double qxg[max_nquad][1];  ///< coordinates
-    double qwgt[max_nquad];    ///< weights
+    static constexpr int max_nquad = 50;  ///< size of c array
+    int nquad;                            ///< number of integration points
+    double qxg[max_nquad][1];             ///< coordinates
+    double qwgt[max_nquad];               ///< weights
 
     /// gauss point coordinates
     const double* point(int point) const
@@ -776,21 +776,50 @@ namespace Core::FE
   template <unsigned dim>
   using IntegrationPoints = typename Internal::DimToIntegrationPoints<dim>::type;
 
+  namespace Internal
+  {
+    template <unsigned dim>
+    struct DimToQuadratureRule
+    {
+    };
+
+    template <>
+    struct DimToQuadratureRule<1>
+    {
+      using type = Core::FE::GaussRule1D;
+    };
+
+    template <>
+    struct DimToQuadratureRule<2>
+    {
+      using type = Core::FE::GaussRule2D;
+    };
+
+    template <>
+    struct DimToQuadratureRule<3>
+    {
+      using type = Core::FE::GaussRule3D;
+    };
+  }  // namespace Internal
+
+  template <unsigned dim>
+  using QuadratureRule = typename Internal::DimToQuadratureRule<dim>::type;
+
 
 
   /*!
-  \brief integration points and weights
+    \brief integration points and weights
 
 
-  This class unifies the access of integration points and corresponding weights
-  w.r.t. to the number of space dimensions.
-  For each number of space dimensions (i.e., 1,2 and 3) a specialization of this class
-  is defined. This avoids performing a switch over the number of space dimensions
-  during runtime!
-  The already existing structs IntegrationPoints3D,... are reused in the specializations
-  in form of member variables of the class.
+    This class unifies the access of integration points and corresponding weights
+    w.r.t. to the number of space dimensions.
+    For each number of space dimensions (i.e., 1,2 and 3) a specialization of this class
+    is defined. This avoids performing a switch over the number of space dimensions
+    during runtime!
+    The already existing structs IntegrationPoints3D,... are reused in the specializations
+    in form of member variables of the class.
 
-  */
+    */
   template <const int nsd>
   class IntPointsAndWeights
   {

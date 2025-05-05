@@ -10,12 +10,14 @@
 #include "4C_deal_ii_create_discretization_helper_test.hpp"
 #include "4C_deal_ii_mimic_fe_values.hpp"
 #include "4C_deal_ii_triangulation.hpp"
+#include "4C_deal_ii_vector_conversion.hpp"
 #include "4C_fem_discretization.hpp"
+#include "4C_linalg_utils_sparse_algebra_create.hpp"
 
-#include <deal.II/distributed/fully_distributed_tria.h>
 #include <deal.II/dofs/dof_tools.h>
 #include <deal.II/fe/fe_system.h>
 #include <deal.II/lac/la_parallel_vector.h>
+#include <deal.II/lac/sparse_direct.h>
 #include <deal.II/numerics/vector_tools_interpolate.templates.h>
 #include <Epetra_MpiComm.h>
 #include <Epetra_SerialComm.h>
@@ -27,7 +29,106 @@ namespace
 
   constexpr int dim = 3;
 
-  TEST(AssembleCoupling, SerialTriaOneCell)
+  TEST(AssembleVolumeInterpolation, SerialTria)
+  {
+    dealii::Triangulation<dim> tria;
+    const auto comm = MPI_COMM_WORLD;
+
+    Core::FE::Discretization discret{"one_cell", comm, 3};
+    TESTING::fill_discretization_hyper_cube(discret, 1, comm);
+    DealiiWrappers::Context<dim> context = DealiiWrappers::create_triangulation(tria, discret);
+
+    const auto four_c_vector = Core::LinAlg::create_vector(*discret.dof_row_map());
+    const auto four_c_vector_result = Core::LinAlg::create_vector(*discret.dof_row_map());
+
+    dealii::DoFHandler<dim> dof_handler{tria};
+    const dealii::FE_Q<dim> deal_fe(1);
+    dof_handler.distribute_dofs(deal_fe);
+
+
+    dealii::DynamicSparsityPattern dsp(dof_handler.n_dofs());
+    dealii::SparsityPattern sparsity_pattern;
+    dealii::DoFTools::make_sparsity_pattern(dof_handler, sparsity_pattern);
+
+    sparsity_pattern.copy_from(dsp);
+    dealii::SparseMatrix<double> matrix;
+    matrix.reinit(sparsity_pattern);
+
+    dealii::Vector<double> global_vector, solution;
+    dealii::Vector<double> local_vector;
+    dealii::FullMatrix<double> local_matrix;
+
+    // Assembly loop:
+    dealii::QGauss<dim> quadrature(1);
+
+    dealii::FEValues<dim> fe_values_test(
+        deal_fe, quadrature, dealii::update_values | dealii::update_JxW_values);
+    dealii::FEValues<dim> fe_values_trial(
+        deal_fe, quadrature, dealii::update_values | dealii::update_JxW_values);
+
+    DealiiWrappers::MimicFEValuesFunction<dim> mimic_fe_values_function(context, discret);
+    std::vector<double> evaluated_values;
+
+    std::vector<dealii::types::global_dof_index> global_dofs_on_cell_deal_ii;
+    std::vector<dealii::types::global_dof_index> global_dofs_on_cell_four_c;
+
+
+    for (const auto& cell : dof_handler.active_cell_iterators())
+    {
+      fe_values_test.reinit(cell);
+      fe_values_trial.reinit(cell);
+
+      const unsigned int dofs_per_cell_range = cell->get_fe().dofs_per_cell;
+      global_dofs_on_cell_deal_ii.resize(dofs_per_cell_range);
+      cell->get_dof_indices(global_dofs_on_cell_deal_ii);
+
+      local_matrix.reinit(dofs_per_cell_range);
+      local_vector.reinit(dofs_per_cell_range);
+
+      mimic_fe_values_function.reinit(cell, quadrature);
+      mimic_fe_values_function.evaluate_from_dof_vector(four_c_vector, evaluated_values);
+
+      for (const unsigned int q_index : fe_values_test.quadrature_point_indices())
+      {
+        for (const unsigned int i : fe_values_test.dof_indices())
+        {
+          local_vector(i) += fe_values_test.shape_value(i, q_index) * evaluated_values[q_index] *
+                             fe_values_test.JxW(q_index) *
+                             mimic_fe_values_function.get_jacobian_scaling();
+          for (const unsigned int j : fe_values_trial.dof_indices())
+          {
+            local_matrix(i, j) += fe_values_test.shape_value(i, q_index) *
+                                  fe_values_trial.shape_value(j, q_index) *
+                                  fe_values_test.JxW(q_index);
+          }
+        }
+      }  // local assembly
+
+      matrix.add(global_dofs_on_cell_deal_ii, local_matrix);
+      global_vector.add(global_dofs_on_cell_deal_ii, local_vector);
+    }
+
+    // Now solve the linear system
+    dealii::SparseDirectUMFPACK direct_solver;
+    direct_solver.initialize(matrix);
+    solution.reinit(global_vector);
+    direct_solver.vmult(solution, global_vector);
+
+    DealiiWrappers::VectorConverter<dealii::Vector<double>, dim> vector_mapping{
+        dof_handler, discret, context};
+    vector_mapping.to_four_c(*four_c_vector_result, solution);
+
+    for (unsigned int i = 0; i < four_c_vector->local_length(); ++i)
+    {
+      EXPECT_DOUBLE_EQ(four_c_vector->operator[](i), four_c_vector_result->operator[](i))
+          << "i=" << i;
+    }
+  }
+
+
+
+  /*
+  TEST(AssembleCoupling, SerialTria)
   {
     dealii::parallel::fullydistributed::Triangulation<dim> tria{MPI_COMM_WORLD};
     dealii::DoFHandler<dim> dof_handler{tria};
@@ -37,12 +138,17 @@ namespace
     Core::FE::Discretization discret{"empty", MPI_COMM_WORLD, dim};
     DealiiWrappers::Context<dim> context;
 
+
+    const auto four_c_vector = Core::LinAlg::create_vector(*discret.dof_row_map());
+
     DealiiWrappers::MimicFEValuesFunction<dim>(context, discret);
 
     // make sparsity pattern for the matrix
     dealii::DynamicSparsityPattern dsp(dof_handler.n_dofs());
 
     std::vector<dealii::types::global_dof_index> global_dofs_on_cell_deal_ii;
+    std::vector<dealii::types::global_dof_index> global_dofs_on_cell_four_c;
+
 
     for (const auto& cell : dof_handler.active_cell_iterators())
     {
@@ -50,10 +156,7 @@ namespace
       global_dofs_on_cell_deal_ii.resize(dofs_per_cell_range);
       cell->get_dof_indices(global_dofs_on_cell_deal_ii);
 
-      const auto* four_c_element = DealiiWrappers::Internal::to_element(context, discret, cell);
-      Core::Elements::LocationArray location_array(discret.num_dof_sets());
-      four_c_element->location_vector(discret, location_array, false);
-      const auto& global_dofs_on_cell_four_c = location_array[0].lm_;
+      DealiiWrappers::TOOLS::get_dof_indices(context, discret, cell, global_dofs_on_cell_four_c);
       for (const auto& dof : global_dofs_on_cell_deal_ii)
       {
         dsp.add_entries(dof, global_dofs_on_cell_four_c.begin(), global_dofs_on_cell_four_c.end());
@@ -64,50 +167,49 @@ namespace
     dealii::SparseMatrix<double> matrix;
     matrix.reinit(sparsity_pattern);
 
+    dealii::FullMatrix<double> full_matrix;
+    dealii::Vector<double> vector;
+
     // Assembly loop:
     dealii::FEValues<dim> fe_values(
         deal_fe, dealii::QGauss<dim>(1), dealii::update_values | dealii::update_JxW_values);
 
     DealiiWrappers::MimicFEValuesFunction<dim> mimic_fe_values_function(context, discret);
+    std::vector<double> evaluated_values;
 
     for (const auto& cell : dof_handler.active_cell_iterators())
     {
       fe_values.reinit(cell);
       mimic_fe_values_function.reinit(cell, fe_values.get_quadrature());
+      full_matrix.reinit(
+          fe_values.dofs_per_cell, mimic_fe_values_function.n_local_shape_functions());
+
+
+      mimic_fe_values_function.evaluate_from_dof_vector(four_c_vector, evaluated_values);
 
       for (const unsigned int q_index : fe_values.quadrature_point_indices())
       {
         for (const unsigned int i : fe_values.dof_indices())
         {
-        }
-      }
+          vector(i) += fe_values.shape_value(i, q_index) * evaluated_values[q_index] *
+                       fe_values.JxW(q_index) * mimic_fe_values_function.get_jacobian_scaling();
 
+          for (const unsigned int j : mimic_fe_values_function.local_shape_indices())
+          {
+            full_matrix(i, j) += fe_values.shape_value(i, q_index) *
+                                 mimic_fe_values_function.shape_value(j, q_index) *
+                                 fe_values.JxW(q_index) *
+                                 mimic_fe_values_function.get_jacobian_scaling();
+          }
+        }
+      }  // local assembly
 
       const unsigned int dofs_per_cell_range = cell->get_fe().dofs_per_cell;
       global_dofs_on_cell_deal_ii.resize(dofs_per_cell_range);
       cell->get_dof_indices(global_dofs_on_cell_deal_ii);
 
-      const auto* four_c_element = DealiiWrappers::Internal::to_element(context, discret, cell);
-      Core::Elements::LocationArray location_array(discret.num_dof_sets());
-      four_c_element->location_vector(discret, location_array, false);
-      const auto& global_dofs_on_cell_four_c = location_array[0].lm_;
-
-
-
-      for (const auto& dof : global_dofs_on_cell_deal_ii)
-      {
-        dsp.add_entries(dof, global_dofs_on_cell_four_c.begin(), global_dofs_on_cell_four_c.end());
-      }
+      DealiiWrappers::TOOLS::get_dof_indices(context, discret, cell, global_dofs_on_cell_four_c);
+      matrix.add(global_dofs_on_cell_deal_ii, global_dofs_on_cell_four_c, full_matrix);
     }
-
-
-    using VectorType = dealii::LinearAlgebra::distributed::Vector<double>;
-    VectorType dealii_vector;
-    dealii::IndexSet locally_relevant_dofs =
-        dealii::DoFTools::extract_locally_relevant_dofs(dof_handler);
-    dealii_vector.reinit(dof_handler.locally_owned_dofs(), locally_relevant_dofs, MPI_COMM_WORLD);
-    dealii_vector = 1.0;
-  }
-
-
+  }*/
 }  // namespace
