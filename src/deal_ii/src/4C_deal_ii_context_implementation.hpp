@@ -33,18 +33,21 @@ namespace DealiiWrappers::Internal
     dealii::hp::FECollection<dim, spacedim> finite_elements;
 
     //! The names of the FiniteElements in #finite_elements.
+    // These are in the same order as the finite elements within the finite_elements collection.
     std::vector<std::string> finite_element_names;
+
+    //! The mapping collection that is used to map the quadrature points from the reference cell to
+    //! the real cell.
+    dealii::hp::MappingCollection<dim, spacedim> mapping_collection;
   };
 
   template <int dim, int spacedim>
-  const Core::Elements::Element *
-        to_element(const Context<dim, spacedim>& context,
-          const Core::FE::Discretization & discretization,
-          const typename dealii::Triangulation<dim, spacedim>::cell_iterator &cell)
+  const Core::Elements::Element* to_element(const Context<dim, spacedim>& context,
+      const Core::FE::Discretization& discretization,
+      const typename dealii::Triangulation<dim, spacedim>::cell_iterator& cell)
   {
     return discretization.l_row_element(context.pimpl_->cell_index_to_element_lid[cell->index()]);
   }
-
 
 
   /**
@@ -71,6 +74,40 @@ namespace DealiiWrappers::Internal
     else
       FOUR_C_THROW("Only finite elements up to degree 2 are supported.");
   }
+
+
+  /**
+   * Generate a Gauss quadrature collection that is sufficient to integrate polynomials of degree
+   * 2 * (deg_shape + deg_mapping) + 1 on all elements.
+   * the degree is infered from the finite element and the mapping.
+   * @req The mapping must be of type MappingQ or MappingQEulerian.
+   * @tparam dim
+   * @tparam spacedim
+   * @param context
+   * @return
+   */
+  template <int dim, int spacedim>
+  dealii::hp::QCollection<dim> fill_required_quadrature_gauss(Context<dim, spacedim>& context)
+  {
+    dealii::hp::QCollection<dim> quadrature_collection;
+    const auto& fe_collection = context.pimpl_->finite_elements;
+    const auto& mapping_collection = context.pimpl_->mapping_collection;
+
+    FOUR_C_ASSERT(fe_collection.size() == mapping_collection.size(),
+        "The number of finite elements and the number of mappings do not match.");
+
+    for (unsigned int i = 0; i < fe_collection.size(); ++i)
+    {
+      // We restrict to the case where the mapping is either MappingQ or MappingQEulerian
+      dealii::MappingQ<dim>* mapping = dynamic_cast<dealii::MappingQ<dim>>(&mapping_collection[i]);
+      FOUR_C_ASSERT(mapping != nullptr, "The mapping is not of type MappingQ or MappingQEulerian.");
+      // Exact for degree (2 * (deg_shape + deg_mapping) + 1)
+      quadrature_collection.push_back(
+          dealii::QGauss<dim>(fe_collection[i].degree + mapping->get_degree() + 1));
+    }
+    return quadrature_collection;
+  }
+
 }  // namespace DealiiWrappers::Internal
 
 FOUR_C_NAMESPACE_CLOSE

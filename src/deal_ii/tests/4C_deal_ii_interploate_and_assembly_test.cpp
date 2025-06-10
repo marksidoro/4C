@@ -8,29 +8,57 @@
 #include <gtest/gtest.h>
 
 #include "4C_deal_ii_create_discretization_helper_test.hpp"
+#include "4C_deal_ii_element_conversion.hpp"
+#include "4C_deal_ii_fe_values_context.hpp"
 #include "4C_deal_ii_mimic_fe_values.hpp"
+#include "4C_deal_ii_mimic_mapping.hpp"
+#include "4C_deal_ii_quadrature_transform.hpp"
 #include "4C_deal_ii_triangulation.hpp"
 #include "4C_deal_ii_vector_conversion.hpp"
 #include "4C_fem_discretization.hpp"
 #include "4C_linalg_utils_sparse_algebra_create.hpp"
 
 #include <deal.II/dofs/dof_tools.h>
-#include <deal.II/fe/fe_system.h>
 #include <deal.II/lac/la_parallel_vector.h>
 #include <deal.II/lac/sparse_direct.h>
 #include <deal.II/numerics/vector_tools_interpolate.templates.h>
-#include <Epetra_MpiComm.h>
 #include <Epetra_SerialComm.h>
-#include <Teuchos_ParameterList.hpp>
 
 namespace
 {
   using namespace FourC;
 
+  template <int dim, typename DenseMatrixType,
+      typename DofIndicesTypeTest = std::vector<unsigned int>,
+      typename DofIndicesTypeTrial = std::vector<unsigned int>>
+  void assemble_mass_contrib_local(const dealii::FEValues<dim>& test_values,
+      const dealii::FEValues<dim>& trial_values, DenseMatrixType& local_matrix,
+      const dealii::Quadrature<dim>& quadrature, const DofIndicesTypeTest& dof_indices_test,
+      const DofIndicesTypeTrial& dof_indices_trial)
+  {
+    for (auto q : std::ranges::iota_view<unsigned>{0U, quadrature.size()})
+    {
+      // Loop over quadrature points
+      for (const auto i : dof_indices_test)
+      {
+        for (const auto j : dof_indices_trial)
+        {
+          local_matrix(i, j) +=
+              test_values.shape_value(i, q) * trial_values.shape_value(j, q) * test_values.JxW(q);
+        }
+      }
+    }
+  }
+
+
+
   constexpr int dim = 3;
 
   TEST(AssembleVolumeInterpolation, SerialTria)
   {
+    using VectorType = dealii::LinearAlgebra::distributed::Vector<double>;
+
+
     dealii::Triangulation<dim> tria;
     const auto comm = MPI_COMM_WORLD;
 
@@ -38,7 +66,19 @@ namespace
     TESTING::fill_discretization_hyper_cube(discret, 1, comm);
     DealiiWrappers::Context<dim> context = DealiiWrappers::create_triangulation(tria, discret);
 
+    context.pimpl_->mapping_collection =
+        DealiiWrappers::ElementConversion::create_linear_mapping_collection(
+            context.pimpl_->finite_elements);
+
+
+
     const auto four_c_vector = Core::LinAlg::create_vector(*discret.dof_row_map());
+    // Set random values of the vector
+    for (int i = 0; i < four_c_vector->local_length(); ++i)
+    {
+      four_c_vector->operator[](i) = static_cast<double>(std::rand()) / RAND_MAX;
+    }
+
     const auto four_c_vector_result = Core::LinAlg::create_vector(*discret.dof_row_map());
 
     dealii::DoFHandler<dim> dof_handler{tria};
@@ -66,7 +106,10 @@ namespace
     dealii::FEValues<dim> fe_values_trial(
         deal_fe, quadrature, dealii::update_values | dealii::update_JxW_values);
 
-    DealiiWrappers::MimicFEValuesFunction<dim> mimic_fe_values_function(context, discret);
+
+    DealiiWrappers::FEValuesContext<dim> fe_values_context(
+        context, discret, dealii::update_values | dealii::update_JxW_values);
+
     std::vector<double> evaluated_values;
 
     std::vector<dealii::types::global_dof_index> global_dofs_on_cell_deal_ii;
@@ -82,29 +125,15 @@ namespace
       global_dofs_on_cell_deal_ii.resize(dofs_per_cell_range);
       cell->get_dof_indices(global_dofs_on_cell_deal_ii);
 
-      local_matrix.reinit(dofs_per_cell_range);
+      local_matrix.reinit(dofs_per_cell_range, dofs_per_cell_range);
       local_vector.reinit(dofs_per_cell_range);
 
-      mimic_fe_values_function.reinit(cell, quadrature);
+      mimic_fe_values_function.reinit(cell);
       mimic_fe_values_function.evaluate_from_dof_vector(four_c_vector, evaluated_values);
 
-      for (const unsigned int q_index : fe_values_test.quadrature_point_indices())
-      {
-        for (const unsigned int i : fe_values_test.dof_indices())
-        {
-          local_vector(i) += fe_values_test.shape_value(i, q_index) * evaluated_values[q_index] *
-                             fe_values_test.JxW(q_index) *
-                             mimic_fe_values_function.get_jacobian_scaling();
-          for (const unsigned int j : fe_values_trial.dof_indices())
-          {
-            local_matrix(i, j) += fe_values_test.shape_value(i, q_index) *
-                                  fe_values_trial.shape_value(j, q_index) *
-                                  fe_values_test.JxW(q_index);
-          }
-        }
-      }  // local assembly
 
-      matrix.add(global_dofs_on_cell_deal_ii, local_matrix);
+
+      matrix.add(global_dofs_on_cell_deal_ii, global_dofs_on_cell_four_c, local_matrix);
       global_vector.add(global_dofs_on_cell_deal_ii, local_vector);
     }
 
@@ -114,11 +143,19 @@ namespace
     solution.reinit(global_vector);
     direct_solver.vmult(solution, global_vector);
 
-    DealiiWrappers::VectorConverter<dealii::Vector<double>, dim> vector_mapping{
-        dof_handler, discret, context};
-    vector_mapping.to_four_c(*four_c_vector_result, solution);
+    // Copy into parallel vector to compare
+    VectorType parallel_vec_helper;
+    parallel_vec_helper.reinit(solution.size());
+    for (unsigned int i = 0; i < solution.size(); ++i)
+    {
+      parallel_vec_helper[i] = solution[i];
+    }
 
-    for (unsigned int i = 0; i < four_c_vector->local_length(); ++i)
+
+    DealiiWrappers::VectorConverter<VectorType, dim> vector_mapping{dof_handler, discret, context};
+    vector_mapping.to_four_c(*four_c_vector_result, parallel_vec_helper);
+
+    for (int i = 0; i < four_c_vector->local_length(); ++i)
     {
       EXPECT_DOUBLE_EQ(four_c_vector->operator[](i), four_c_vector_result->operator[](i))
           << "i=" << i;

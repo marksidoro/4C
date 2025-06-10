@@ -18,7 +18,12 @@ namespace DealiiWrappers
       template <int dim>
       dealii::Point<dim> transform_unit_cell_point(const dealii::Point<dim>& deal_unit_cell_point)
       {
-        return deal_unit_cell_point * 2 - 1;
+        auto helper = deal_unit_cell_point * 2;
+        for (int d = 0; d < dim; ++d)
+        {
+          helper[d] -= 1;
+        }
+        return helper;
       }
 
       template <int dim>
@@ -236,9 +241,9 @@ namespace DealiiWrappers
       return deal_type_quadrature_.get_weights();
     }
 
-    constexpr double deal_ii_scaling() const
+    double deal_ii_scaling() const
     {
-      return QuadTools::deal_to_four_c::transform_weight<dim>();
+      return QuadTools::deal_to_four_c::transformation_scaling<dim>();
     }
 
     const std::vector<dealii::Point<dim>>& get_four_c_points() const
@@ -250,9 +255,9 @@ namespace DealiiWrappers
       return four_c_type_quadrature_.get_weights();
     }
 
-    constexpr double four_c_scaling() const
+    double four_c_scaling() const
     {
-      return QuadTools::four_c_to_deal::transform_weight<dim>();
+      return QuadTools::four_c_to_deal::transformation_scaling<dim>();
     }
 
     const dealii::Quadrature<dim>& get_deal_ii_quadrature() const { return deal_type_quadrature_; }
