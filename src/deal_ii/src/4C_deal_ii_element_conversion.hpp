@@ -69,6 +69,69 @@ namespace DealiiWrappers::ElementConversion
   }
 
   /**
+   * Same function as above but takes a deal.II finite element as input.
+   * @tparam dim
+   * @param fe
+   * @return
+   */
+  template <int dim>
+  inline std::span<const int> reindex_dealii_to_four_c(dealii::FiniteElement<dim> fe)
+  {
+    return reindex_dealii_to_four_c(four_c_cell_type<dim>(fe.get_name().c_str()));
+  }
+
+  /**
+   * Returns the reindexing of 4C  vertices to deal.II vertices for a given cell type. This means
+   * that the i-th vertex of a 4C cell corresponds to the reindex[i]-th vertex of the
+   * corresponding deal.II cell.
+   */
+  inline std::span<const int> reindex_four_c_to_dealii(Core::FE::CellType cell_type)
+  {
+    switch (cell_type)
+    {
+      case Core::FE::CellType::line2:
+      {
+        static constexpr std::array reindex{0, 1};
+        return reindex;
+      }
+      case Core::FE::CellType::tet4:
+      {
+        static constexpr std::array reindex{0, 1, 2, 3};
+        return reindex;
+      }
+      case Core::FE::CellType::hex8:
+      {
+        static constexpr std::array reindex{0, 1, 3, 2, 4, 5, 7, 6};
+        return reindex;
+      }
+      case Core::FE::CellType::hex27:
+      {
+        static constexpr std::array reindex{0, 1, 3, 2, 4, 5, 7, 6, 10, 9, 11, 8, 16, 17, 19, 18,
+            14, 13, 15, 12, 24, 22, 21, 23, 20, 25, 26};
+        return reindex;
+      }
+      default:
+      {
+        FOUR_C_THROW(
+            "Unsupported cell type '{}'.", Core::FE::cell_type_to_string(cell_type).c_str());
+      }
+    }
+  }
+
+  /**
+   * Same function as above but takes a deal.II finite element as input.
+   * @tparam dim
+   * @param fe
+   * @return
+   */
+  template <int dim>
+  inline std::span<const int> reindex_four_c_to_dealii(dealii::FiniteElement<dim> fe)
+  {
+    return reindex_four_c_to_dealii(four_c_cell_type<dim>(fe.get_name().c_str()));
+  }
+
+
+  /**
    * Given a 4C element, extract the GIDs of its nodes and rearrange them to be compatible with
    * deal.II. Also, return the element center which we assume uniquely identifies the element.
    */
@@ -142,10 +205,89 @@ namespace DealiiWrappers::ElementConversion
     }
   }
 
+
+  /**
+   * Helper to get the four_c_cell_type from a deal.II finite element name.
+   * the const char* type is used so that this function can be used as constexpr
+   * @tparam dim
+   * @tparam spacedim
+   * @param finite_element_name
+   * @return
+   */
+  template <int dim, int spacedim = dim>
+  constexpr Core::FE::CellType four_c_cell_type(const char* finite_element_name)
+  {
+    (void)finite_element_name;  // suppress unused variable warning
+    FOUR_C_THROW("Not implemented dimension {} and spacedim {}.", dim, spacedim);
+  }
+
+  /**
+   * Not constexpr version of the above function. This is used to get the cell type from a
+   * dealii::FiniteElement object
+   * @tparam dim
+   * @tparam spacedim
+   * @param finite_element
+   * @return
+   */
+  template <int dim, int spacedim = dim>
+  Core::FE::CellType four_c_cell_type(const dealii::FiniteElement<dim, spacedim>& finite_element)
+  {
+    return four_c_cell_type<dim, spacedim>(finite_element.get_name().c_str());
+  }
+
+
+  /**
+   * Specializations of the above functions for 1D, 2D and 3D elements.
+   * @param finite_element_name
+   * @return
+   */
+  template <>
+  constexpr Core::FE::CellType four_c_cell_type<1, 1>(const char* finite_element_name)
+  {
+    switch (finite_element_name)
+    {
+      case "FE_Q(1)":
+        return Core::FE::CellType::line2;
+      default:
+        FOUR_C_THROW("Unsupported finite element type '{}' for dim = {} and spacedim = {}.",
+            finite_element_name, 1, 1);
+    }
+  }
+
+  template <>
+  constexpr Core::FE::CellType four_c_cell_type<2, 2>(const char* finite_element_name)
+  {
+    switch (finite_element_name)
+    {
+      case "FE_Q(1)":
+        return Core::FE::CellType::quad4;
+      default:
+        FOUR_C_THROW("Unsupported finite element type '{}' for dim = {} and spacedim = {}.",
+            finite_element_name, 2, 2);
+    }
+  }
+  template <>
+  constexpr Core::FE::CellType four_c_cell_type<3, 3>(const char* finite_element_name)
+  {
+    switch (finite_element_name)
+    {
+      case "FE_Q(1)":
+        return Core::FE::CellType::hex8;
+      case "FE_Q(2)":
+        return Core::FE::CellType::hex27;
+      case "FE_SimplexP(1)":
+        return Core::FE::CellType::tet4;
+      default:
+        FOUR_C_THROW("Unsupported finite element type '{}' for dim = {} and spacedim = {}.",
+            finite_element_name, 3, 3);
+    }
+  }
+
+
   /**
    * Create the dealii::hp::FECollection with all FE types that appear in the given @p
-   * discretization. This also included FEs that appear only on other MPI ranks. In addition, this
-   * function returns the names of these elements in the same order as in the FECollection.
+   * discretization. This also included FEs that appear only on other MPI ranks. In addition,
+   * this function returns the names of these elements in the same order as in the FECollection.
    *
    * @note The ordering of the FEs in the collection is the same on all ranks.
    */
@@ -214,6 +356,35 @@ namespace DealiiWrappers::ElementConversion
     }
 
     return {fe_collection, all_dealii_fe_names};
+  }
+
+  /**
+   * Function to create a mapping collection for every finite element in the given
+   * fe_collection, The mapping is for all elements linear and uses the deal.II
+   * MappingQ class. (currently this work only for linear and quadratic elements and for hex meshes)
+   * @tparam dim
+   * @tparam spacedim
+   * @param fe_collection
+   * @return
+   */
+  template <int dim, int spacedim>
+  dealii::hp::MappingCollection<dim, spacedim> create_linear_mapping_collection(
+      const dealii::hp::FECollection<dim, spacedim>& fe_collection)
+  {
+    dealii::hp::MappingCollection<dim, spacedim> mapping_collection;
+    for (unsigned int i = 0; i < fe_collection.size(); ++i)
+    {
+      switch (fe_collection[i].get_name())
+      {
+        case "FE_Q(1)":
+        case "FE_Q(2)":
+          mapping_collection.push_back(dealii::MappingQ<dim, spacedim>(1));
+          break;
+        default:
+          FOUR_C_THROW("Unsupported finite element type '{}'.", fe_collection[i].get_name());
+      }
+    }
+    return mapping_collection;
   }
 
 }  // namespace DealiiWrappers::ElementConversion

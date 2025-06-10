@@ -29,7 +29,7 @@
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
         "FOUR_C_ENABLE_DEVELOPER_MODE": "ON",
-        "FOUR_C_DEAL_II_ROOT": "/home/sidorovic/install/dealii/debug/tl_14_4",
+        "FOUR_C_DEAL_II_ROOT": "/home/sidorovic/install/dealii/debug/four_c",
         "CMAKE_INSTALL_PREFIX": "/home/sidorovic/install/4C/debug"
       }
     },
@@ -41,7 +41,7 @@
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
         "FOUR_C_ENABLE_DEVELOPER_MODE": "ON",
-        "FOUR_C_DEAL_II_ROOT": "/home/sidorovic/install/dealii/release/tl_14_4",
+        "FOUR_C_DEAL_II_ROOT": "/home/sidorovic/install/dealii/release/four_c",
         "CMAKE_INSTALL_PREFIX": "/home/sidorovic/install/4C/release"
       }
     }

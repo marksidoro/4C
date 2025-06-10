@@ -87,8 +87,10 @@ namespace
 
 
     dealii::DynamicSparsityPattern dsp(dof_handler.n_dofs());
+    DealiiWrappers::make_context_sparsity_pattern(context, dof_handler, discret, dsp);
     dealii::SparsityPattern sparsity_pattern;
-    dealii::DoFTools::make_sparsity_pattern(dof_handler, sparsity_pattern);
+
+
 
     sparsity_pattern.copy_from(dsp);
     dealii::SparseMatrix<double> matrix;
@@ -103,9 +105,6 @@ namespace
 
     dealii::FEValues<dim> fe_values_test(
         deal_fe, quadrature, dealii::update_values | dealii::update_JxW_values);
-    dealii::FEValues<dim> fe_values_trial(
-        deal_fe, quadrature, dealii::update_values | dealii::update_JxW_values);
-
 
     DealiiWrappers::FEValuesContext<dim> fe_values_context(
         context, discret, dealii::update_values | dealii::update_JxW_values);
@@ -119,20 +118,39 @@ namespace
     for (const auto& cell : dof_handler.active_cell_iterators())
     {
       fe_values_test.reinit(cell);
-      fe_values_trial.reinit(cell);
+      fe_values_context.reinit(cell);
 
       const unsigned int dofs_per_cell_range = cell->get_fe().dofs_per_cell;
       global_dofs_on_cell_deal_ii.resize(dofs_per_cell_range);
       cell->get_dof_indices(global_dofs_on_cell_deal_ii);
 
-      local_matrix.reinit(dofs_per_cell_range, dofs_per_cell_range);
+      const unsigned int dofs_per_cell_domain =
+          fe_values_context.get_present_fe_values().dofs_per_cell;
+      global_dofs_on_cell_four_c.resize(dofs_per_cell_domain);
+      fe_values_context.get_dof_indices_four_c_ordering(global_dofs_on_cell_four_c);
+
+      FOUR_C_ASSERT(dofs_per_cell_range == global_dofs_on_cell_deal_ii.size(),
+          "The number of dofs per cell in the range discretization does not match the size of the "
+          "global dofs vector.");
+      local_matrix.reinit(dofs_per_cell_range, dofs_per_cell_domain);
       local_vector.reinit(dofs_per_cell_range);
 
-      mimic_fe_values_function.reinit(cell);
-      mimic_fe_values_function.evaluate_from_dof_vector(four_c_vector, evaluated_values);
+      const auto& fe_values_trial = fe_values_context.get_present_fe_values();
 
-
-
+      for (unsigned int q_index : fe_values_test.quadrature_point_indices())
+      {
+        for (auto i : fe_values_test.dof_indices())
+        {
+          for (auto j : fe_values_context.shape_indices_four_c())
+          {
+            local_matrix(i, j) += fe_values_test.shape_value(i, q_index) *
+                                  fe_values_trial.shape_value(j, q_index) *
+                                  fe_values_test.JxW(q_index);
+          }
+          // assemble the rhs contribution only on the test space
+          local_vector(i) = fe_values_test.quadrature_point(q_index).square();
+        }
+      }  // local assembly
       matrix.add(global_dofs_on_cell_deal_ii, global_dofs_on_cell_four_c, local_matrix);
       global_vector.add(global_dofs_on_cell_deal_ii, local_vector);
     }

@@ -249,7 +249,7 @@ namespace DealiiWrappers
     {
       // create location array needed for the extraction from the global vector
       Core::Elements::LocationArray location_array(discretization_.num_dof_sets());
-      current_four_c_element_->location_vector(this->discretization_, location_array, false);
+      current_four_c_element_->location_vector(this->discretization_, location_array);
 
       // extract the local values here:
       auto local_values = Core::FE::extract_values(*state_vector_, location_array[0].lm_);
