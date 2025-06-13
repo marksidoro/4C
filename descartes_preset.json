@@ -2,7 +2,7 @@
   "version": 5,
   "configurePresets": [
     {
-      "name": ".base",
+      "name": ".base_descartes",
       "hidden": true,
       "generator": "Ninja",
       "binaryDir": "${sourceDir}/build/${presetName}",
@@ -22,9 +22,9 @@
       }
     },
     {
-      "name": "debug",
+      "name": "debug_descartes",
       "inherits": [
-        ".base"
+        ".base_descartes"
       ],
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
@@ -34,9 +34,9 @@
       }
     },
     {
-      "name": "release",
+      "name": "release_descartes",
       "inherits": [
-        ".base"
+        ".base_descartes"
       ],
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",

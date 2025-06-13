@@ -51,11 +51,12 @@ namespace DealiiWrappers
 
    public:
     FEValuesContext(const Context<dim, spacedim>& context,
-        const Core::FE::Discretization& discretization, dealii::UpdateFlags update_flags)
+        const Core::FE::Discretization& discretization,
+        const dealii::hp::QCollection<dim>& quadrature_collection, dealii::UpdateFlags update_flags)
         : context_(context),
           discretization_(discretization),
-          fe_values_(context.finite_elements, context.mapping_collection,
-              context.quadrature_context().get_dealii_quadrature(), update_flags)
+          fe_values_(context.pimpl_->mapping_collection, context.pimpl_->finite_elements,
+              quadrature_collection, update_flags)
     {
     }
 
@@ -71,7 +72,14 @@ namespace DealiiWrappers
 
       auto pos = std::find(context_.pimpl_->finite_element_names.begin(),
           context_.pimpl_->finite_element_names.end(),
-          Core::FE::cell_type_to_string(cell_data_.element->shape()));
+          ElementConversion::dealii_fe_name(cell_data_.element->shape()));
+
+      std::cout << "FE name size:" << context_.pimpl_->finite_element_names.size() << std::endl;
+      std::cout << "FE size" << context_.pimpl_->finite_elements.size() << std::endl;
+      for (auto name : context_.pimpl_->finite_element_names)
+      {
+        std::cout << "Finite element name: " << name << std::endl;
+      }
 
       FOUR_C_ASSERT(pos != context_.pimpl_->finite_element_names.end(),
           "The finite element name '{}' is not in the finite element collection.",

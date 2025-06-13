@@ -147,9 +147,10 @@ namespace TESTING
    * Fill the given @p discretization with a hypercube mesh. A total of `subdivisions^3` elements
    * are created and partitioned among all processes in @p comm.
    * */
-  inline void fill_discretization_hyper_cube(
-      Core::FE::Discretization& discretization, int subdivisions, MPI_Comm comm)
+  inline void fill_discretization_hyper_cube(Core::FE::Discretization& discretization,
+      int subdivisions, MPI_Comm comm, bool vector_valued = true)
   {
+    constexpr int dim = 3;
     discretization.clear_discret();
 
     const int my_rank = Core::Communication::my_mpi_rank(comm);
@@ -181,8 +182,8 @@ namespace TESTING
 
             PureGeometryElementType::instance();
             auto ele = std::make_unique<PureGeometryElement>(ele_id, my_rank,
-                PureGeometryElement::Data{
-                    .cell_type = Core::FE::CellType::hex8, .num_dof_per_node = 3});
+                PureGeometryElement::Data{.cell_type = Core::FE::CellType::hex8,
+                    .num_dof_per_node = vector_valued ? dim : 1});
             ele->set_node_ids(8, nodeids.begin());
 
             discretization.add_element(std::move(ele));

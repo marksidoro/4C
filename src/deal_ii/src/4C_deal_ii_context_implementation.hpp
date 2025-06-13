@@ -53,6 +53,10 @@ namespace DealiiWrappers
         const Core::FE::Discretization& discretization,
         const typename dealii::Triangulation<dim, spacedim>::cell_iterator& cell)
     {
+      std::cout << "Cell index: " << cell->index() << std::endl;
+      std::cout << "Cell lid: " << context.pimpl_->cell_index_to_element_lid[cell->index()]
+                << std::endl;
+
       return discretization.l_row_element(context.pimpl_->cell_index_to_element_lid[cell->index()]);
     }
 
@@ -78,7 +82,7 @@ namespace DealiiWrappers
       }
       else if (fe.degree == 2)
       {
-        (void)2;
+        FOUR_C_THROW("Not implemented yet.");
         // create a MappingQEulerian that takes the shift into account
       }
       else

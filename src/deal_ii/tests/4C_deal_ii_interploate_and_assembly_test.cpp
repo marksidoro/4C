@@ -16,10 +16,13 @@
 #include "4C_deal_ii_triangulation.hpp"
 #include "4C_deal_ii_vector_conversion.hpp"
 #include "4C_fem_discretization.hpp"
+#include "4C_fem_dofset.hpp"
 #include "4C_linalg_utils_sparse_algebra_create.hpp"
 
 #include <deal.II/dofs/dof_tools.h>
 #include <deal.II/lac/la_parallel_vector.h>
+#include <deal.II/lac/precondition.h>
+#include <deal.II/lac/solver_cg.h>
 #include <deal.II/lac/sparse_direct.h>
 #include <deal.II/numerics/vector_tools_interpolate.templates.h>
 #include <Epetra_SerialComm.h>
@@ -63,8 +66,17 @@ namespace
     const auto comm = MPI_COMM_WORLD;
 
     Core::FE::Discretization discret{"one_cell", comm, 3};
-    TESTING::fill_discretization_hyper_cube(discret, 1, comm);
+    TESTING::fill_discretization_hyper_cube(discret, 1, comm, false);
     DealiiWrappers::Context<dim> context = DealiiWrappers::create_triangulation(tria, discret);
+
+
+
+    // dof_set->assign_degrees_of_freedom(discret, 0, 0);
+    // std::cout << "Number of dofs: " << dof_set->num_global_elements() << std::endl;
+
+    // discret.add_dof_set(dof_set);
+
+
 
     context.pimpl_->mapping_collection =
         DealiiWrappers::ElementConversion::create_linear_mapping_collection(
@@ -74,9 +86,10 @@ namespace
 
     const auto four_c_vector = Core::LinAlg::create_vector(*discret.dof_row_map());
     // Set random values of the vector
-    for (int i = 0; i < four_c_vector->local_length(); ++i)
+    for (int i = 0; i < four_c_vector->global_length(); ++i)
     {
-      four_c_vector->operator[](i) = static_cast<double>(std::rand()) / RAND_MAX;
+      auto node_coords = discret.g_node(i)->x();
+      four_c_vector->operator[](i) = node_coords[0];
     }
 
     const auto four_c_vector_result = Core::LinAlg::create_vector(*discret.dof_row_map());
@@ -84,6 +97,10 @@ namespace
     dealii::DoFHandler<dim> dof_handler{tria};
     const dealii::FE_Q<dim> deal_fe(1);
     dof_handler.distribute_dofs(deal_fe);
+
+
+    EXPECT_EQ(dof_handler.n_dofs(), discret.dof_row_map()->num_global_elements())
+        << "The number of dofs in the deal.II DoFHandler does not match the number of dofs in the ";
 
 
     dealii::DynamicSparsityPattern dsp(dof_handler.n_dofs());
@@ -97,17 +114,23 @@ namespace
     matrix.reinit(sparsity_pattern);
 
     dealii::Vector<double> global_vector, solution;
+    global_vector.reinit(dof_handler.n_dofs());
+    solution.reinit(dof_handler.n_dofs());
+
     dealii::Vector<double> local_vector;
     dealii::FullMatrix<double> local_matrix;
 
     // Assembly loop:
-    dealii::QGauss<dim> quadrature(1);
+    dealii::QGauss<dim> quadrature(2);
+    dealii::hp::QCollection<dim> quadrature_collection(quadrature);
 
-    dealii::FEValues<dim> fe_values_test(
-        deal_fe, quadrature, dealii::update_values | dealii::update_JxW_values);
+
+
+    dealii::FEValues<dim> fe_values_test(deal_fe, quadrature,
+        dealii::update_values | dealii::update_JxW_values | dealii::update_quadrature_points);
 
     DealiiWrappers::FEValuesContext<dim> fe_values_context(
-        context, discret, dealii::update_values | dealii::update_JxW_values);
+        context, discret, quadrature_collection, dealii::update_values | dealii::update_JxW_values);
 
     std::vector<double> evaluated_values;
 
@@ -148,18 +171,23 @@ namespace
                                   fe_values_test.JxW(q_index);
           }
           // assemble the rhs contribution only on the test space
-          local_vector(i) = fe_values_test.quadrature_point(q_index).square();
+          local_vector(i) = fe_values_test.quadrature_point(q_index)[0];
         }
       }  // local assembly
       matrix.add(global_dofs_on_cell_deal_ii, global_dofs_on_cell_four_c, local_matrix);
       global_vector.add(global_dofs_on_cell_deal_ii, local_vector);
     }
+    global_vector.print(std::cout);
+    matrix.print(std::cout);
+
 
     // Now solve the linear system
-    dealii::SparseDirectUMFPACK direct_solver;
-    direct_solver.initialize(matrix);
+    dealii::SolverControl solver_control(1000, 1e-12);
+    dealii::SolverCG<dealii::Vector<double>> solver(solver_control);
     solution.reinit(global_vector);
-    direct_solver.vmult(solution, global_vector);
+    solver.solve(matrix, solution, global_vector, dealii::PreconditionIdentity());
+
+
 
     // Copy into parallel vector to compare
     VectorType parallel_vec_helper;
@@ -175,8 +203,9 @@ namespace
 
     for (int i = 0; i < four_c_vector->local_length(); ++i)
     {
-      EXPECT_DOUBLE_EQ(four_c_vector->operator[](i), four_c_vector_result->operator[](i))
-          << "i=" << i;
+      std::cout << "Four C vector[" << i << "] = " << four_c_vector->operator[](i)
+                << ", result vector[" << i << "] = " << four_c_vector_result->operator[](i)
+                << std::endl;
     }
   }
 

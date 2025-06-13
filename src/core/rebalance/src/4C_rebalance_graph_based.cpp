@@ -301,7 +301,8 @@ std::shared_ptr<const Core::LinAlg::Graph> Core::Rebalance::build_graph(
     }
     Core::Communication::broadcast(&size, 1, proc, dis.get_comm());
     if (proc != myrank) recvnodes.resize(size);
-    Core::Communication::broadcast(&recvnodes[0], size, proc, dis.get_comm());
+    Core::Communication::broadcast(
+        recvnodes.empty() ? nullptr : &recvnodes[0], size, proc, dis.get_comm());
     if (proc != myrank && size)
     {
       int* ptr = &recvnodes[0];

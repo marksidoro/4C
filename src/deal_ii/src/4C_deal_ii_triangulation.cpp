@@ -212,14 +212,10 @@ namespace DealiiWrappers
               "The cell center does not match any of the element centers. This should not happen.");
 
           const auto local_index = std::distance(my_element_centers.begin(), found);
-
+          std::cout << "Cell index: " << cell->index() << ", local index: " << local_index
+                    << std::endl;
           context.pimpl_->cell_index_to_element_lid[cell->index()] = local_index;
         }
-
-        // Determine all FiniteElement objects that are required.
-        std::tie(context.pimpl_->finite_elements, context.pimpl_->finite_element_names) =
-            ElementConversion::create_required_finite_element_collection<dim, spacedim>(
-                discretization);
       }
       // We cannot handle any other parallel Triangulation types yet.
       else if (dynamic_cast<dealii::parallel::TriangulationBase<dim, spacedim>*>(&tria) != nullptr)
@@ -232,7 +228,30 @@ namespace DealiiWrappers
       {
         // If we have a plain serial Triangulation, just pass the fully redundant data.
         tria.create_triangulation(construction_data);
+
+        for (const auto& cell : tria.active_cell_iterators())
+        {
+          FOUR_C_ASSERT(cell->is_locally_owned(),
+              "The cell is not locally owned, but should be since we have a serial Triangulation.");
+
+          const auto& cell_center = cell->center();
+          const auto found = std::find_if(my_element_centers.begin(), my_element_centers.end(),
+              [&](const auto& center) { return center.distance(cell_center) < 1e-14; });
+
+          FOUR_C_ASSERT(found != my_element_centers.end(),
+              "The cell center does not match any of the element centers. This should not happen.");
+
+          const auto local_index = std::distance(my_element_centers.begin(), found);
+          std::cout << "Cell index: " << cell->index() << ", local index: " << local_index
+                    << std::endl;
+          context.pimpl_->cell_index_to_element_lid[cell->index()] = local_index;
+        }
       }
+
+      // Determine all FiniteElement objects that are required.
+      std::tie(context.pimpl_->finite_elements, context.pimpl_->finite_element_names) =
+          ElementConversion::create_required_finite_element_collection<dim, spacedim>(
+              discretization);
     }
     FOUR_C_ASSERT(tria.n_global_coarse_cells() ==
                       static_cast<std::size_t>(discretization.num_global_elements()),

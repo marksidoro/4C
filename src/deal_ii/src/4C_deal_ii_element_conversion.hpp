@@ -17,12 +17,80 @@
 #include <deal.II/fe/fe_simplex_p.h>
 #include <deal.II/fe/fe_system.h>
 #include <deal.II/fe/fe_tools.h>
+#include <deal.II/fe/mapping_q.h>
 #include <deal.II/hp/fe_collection.h>
 
 FOUR_C_NAMESPACE_OPEN
 
 namespace DealiiWrappers::ElementConversion
 {
+  /**
+   * Helper namespace containing function to allow for compile time function definitions
+   * of the deal.II fe-name to 4C cell type conversion.
+   * This is necessary since the
+   */
+  namespace Internal
+  {
+    constexpr std::uint64_t hash(std::string_view s)
+    {
+      std::uint64_t h = 1469598103934665603ULL;
+      for (char c : s)
+      {
+        h ^= static_cast<std::uint8_t>(c);
+        h *= 1099511628211ULL;
+      }
+      return h;
+    }
+
+    template <int dim>
+    constexpr std::array<char, 1> dim_to_str()
+    {
+      static_assert(dim == 1 || dim == 2 || dim == 3, "dim must be 1, 2 or 3");
+      return {'0' + dim};
+    }
+
+
+    template <size_t N>
+    struct fixed_string
+    {
+      char value[N];
+      constexpr fixed_string(const char (&str)[N])
+      {
+        for (size_t i = 0; i < N; ++i) value[i] = str[i];
+      }
+      constexpr std::string_view view() const { return {value, N - 1}; }  // Exclude null terminator
+    };
+    template <size_t N>
+    fixed_string(const char (&)[N]) -> fixed_string<N>;
+
+
+    template <fixed_string Prefix, int dim, fixed_string Suffix>
+    constexpr auto concatenate()
+    {
+      constexpr auto prefix = Prefix.value;
+      constexpr auto suffix = Suffix.value;
+      constexpr auto numarr = dim_to_str<dim>();
+      constexpr size_t prefix_len = Prefix.view().size();
+      constexpr size_t num_len = numarr.size();
+      constexpr size_t suffix_len = Suffix.view().size();
+
+      std::array<char, prefix_len + num_len + suffix_len> buf{};
+      size_t i = 0;
+      for (size_t j = 0; j < prefix_len; ++j) buf[i++] = prefix[j];
+      for (size_t j = 0; j < num_len; ++j) buf[i++] = numarr[j];
+      for (size_t j = 0; j < suffix_len; ++j) buf[i++] = suffix[j];
+      return buf;
+    }
+
+    template <fixed_string Prefix, int Value, fixed_string Suffix>
+    constexpr std::string_view concat_view()
+    {
+      constexpr auto arr = concatenate<Prefix, Value, Suffix>();
+      return {arr.data(), arr.size()};
+    }
+  }  // namespace Internal
+
+
 
   /**
    * Returns the reindexing of deal.II vertices to 4C vertices for a given cell type. This means
@@ -192,13 +260,13 @@ namespace DealiiWrappers::ElementConversion
     switch (cell_type)
     {
       case Core::FE::CellType::line2:
-        return "FE_Q(1)";
+        return "FE_Q<1>(1)";
       case Core::FE::CellType::tet4:
         return "FE_SimplexP(1)";
       case Core::FE::CellType::hex8:
-        return "FE_Q(1)";
+        return "FE_Q<3>(1)";
       case Core::FE::CellType::hex27:
-        return "FE_Q(2)";
+        return "FE_Q<3>(2)";
       default:
         FOUR_C_THROW(
             "Unsupported cell type '{}'.", Core::FE::cell_type_to_string(cell_type).c_str());
@@ -215,10 +283,11 @@ namespace DealiiWrappers::ElementConversion
    * @return
    */
   template <int dim, int spacedim = dim>
-  constexpr Core::FE::CellType four_c_cell_type(const char* finite_element_name)
+  constexpr Core::FE::CellType four_c_cell_type(const std::string_view finite_element_name)
   {
     (void)finite_element_name;  // suppress unused variable warning
     FOUR_C_THROW("Not implemented dimension {} and spacedim {}.", dim, spacedim);
+    return Core::FE::CellType::dis_none;
   }
 
   /**
@@ -242,11 +311,15 @@ namespace DealiiWrappers::ElementConversion
    * @return
    */
   template <>
-  constexpr Core::FE::CellType four_c_cell_type<1, 1>(const char* finite_element_name)
+  constexpr Core::FE::CellType four_c_cell_type<1, 1>(const std::string_view finite_element_name)
   {
-    switch (finite_element_name)
+    // grab function pointer to get rid of namespace
+    using namespace Internal;
+
+    switch (hash(finite_element_name))
     {
-      case "FE_Q(1)":
+      case hash("FE_Q(1)"):
+      case hash("FE_Q<1>(1)"):
         return Core::FE::CellType::line2;
       default:
         FOUR_C_THROW("Unsupported finite element type '{}' for dim = {} and spacedim = {}.",
@@ -255,11 +328,15 @@ namespace DealiiWrappers::ElementConversion
   }
 
   template <>
-  constexpr Core::FE::CellType four_c_cell_type<2, 2>(const char* finite_element_name)
+  constexpr Core::FE::CellType four_c_cell_type<2, 2>(const std::string_view finite_element_name)
   {
-    switch (finite_element_name)
+    // grab function pointer to get rid of namespace
+    using namespace Internal;
+
+    switch (hash(finite_element_name))
     {
-      case "FE_Q(1)":
+      case hash("FE_Q(1)"):
+      case hash("FE_Q<2>(1)"):
         return Core::FE::CellType::quad4;
       default:
         FOUR_C_THROW("Unsupported finite element type '{}' for dim = {} and spacedim = {}.",
@@ -267,15 +344,21 @@ namespace DealiiWrappers::ElementConversion
     }
   }
   template <>
-  constexpr Core::FE::CellType four_c_cell_type<3, 3>(const char* finite_element_name)
+  constexpr Core::FE::CellType four_c_cell_type<3, 3>(const std::string_view finite_element_name)
   {
-    switch (finite_element_name)
+    // grab function pointer to get rid of namespace
+    using namespace Internal;
+
+    switch (hash(finite_element_name))
     {
-      case "FE_Q(1)":
+      case hash("FE_Q(1)"):
+      case hash("FE_Q<3>(1)"):
         return Core::FE::CellType::hex8;
-      case "FE_Q(2)":
+      case hash("FE_Q(2)"):
+      case hash("FE_Q<3>(2)"):
         return Core::FE::CellType::hex27;
-      case "FE_SimplexP(1)":
+      case hash("FE_SimplexP(1)"):
+      case hash("FE_SimplexP<3>(1)"):
         return Core::FE::CellType::tet4;
       default:
         FOUR_C_THROW("Unsupported finite element type '{}' for dim = {} and spacedim = {}.",
@@ -346,7 +429,9 @@ namespace DealiiWrappers::ElementConversion
               return std::make_unique<dealii::FE_SimplexP<dim, spacedim>>(1);
             }
             else
+            {
               return dealii::FETools::get_fe_by_name<dim, spacedim>(fe_string);
+            }
           });
 
       if (max_num_dof_per_node == 1)
@@ -361,7 +446,8 @@ namespace DealiiWrappers::ElementConversion
   /**
    * Function to create a mapping collection for every finite element in the given
    * fe_collection, The mapping is for all elements linear and uses the deal.II
-   * MappingQ class. (currently this work only for linear and quadratic elements and for hex meshes)
+   * MappingQ class. (currently this work only for linear and quadratic elements and for hex
+   * meshes)
    * @tparam dim
    * @tparam spacedim
    * @param fe_collection
@@ -371,13 +457,16 @@ namespace DealiiWrappers::ElementConversion
   dealii::hp::MappingCollection<dim, spacedim> create_linear_mapping_collection(
       const dealii::hp::FECollection<dim, spacedim>& fe_collection)
   {
+    using namespace Internal;
+    // grab function pointer to get rid of namespace
+
     dealii::hp::MappingCollection<dim, spacedim> mapping_collection;
     for (unsigned int i = 0; i < fe_collection.size(); ++i)
     {
-      switch (fe_collection[i].get_name())
+      switch (hash(fe_collection[i].get_name()))
       {
-        case "FE_Q(1)":
-        case "FE_Q(2)":
+        case hash("FE_Q(1)"):
+        case hash(concat_view<"FE_Q<", dim, ">(1)">()):
           mapping_collection.push_back(dealii::MappingQ<dim, spacedim>(1));
           break;
         default:
