@@ -212,8 +212,6 @@ namespace DealiiWrappers
               "The cell center does not match any of the element centers. This should not happen.");
 
           const auto local_index = std::distance(my_element_centers.begin(), found);
-          std::cout << "Cell index: " << cell->index() << ", local index: " << local_index
-                    << std::endl;
           context.pimpl_->cell_index_to_element_lid[cell->index()] = local_index;
         }
       }
@@ -242,8 +240,6 @@ namespace DealiiWrappers
               "The cell center does not match any of the element centers. This should not happen.");
 
           const auto local_index = std::distance(my_element_centers.begin(), found);
-          std::cout << "Cell index: " << cell->index() << ", local index: " << local_index
-                    << std::endl;
           context.pimpl_->cell_index_to_element_lid[cell->index()] = local_index;
         }
       }
@@ -253,6 +249,8 @@ namespace DealiiWrappers
           ElementConversion::create_required_finite_element_collection<dim, spacedim>(
               discretization);
     }
+
+    context.pimpl_->triangulation = &tria;
     FOUR_C_ASSERT(tria.n_global_coarse_cells() ==
                       static_cast<std::size_t>(discretization.num_global_elements()),
         "The number of active cells in the triangulation does not match the number of elements.");

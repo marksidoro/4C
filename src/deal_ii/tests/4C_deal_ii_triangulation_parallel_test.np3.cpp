@@ -23,7 +23,7 @@ namespace
   using namespace FourC;
 
   // To better understand and debug this test suite this flag can be activated locally.
-  const bool do_output = false;
+  const bool do_output = true;
 
   template <int dim, int spacedim>
   void output_triangulation(
@@ -34,7 +34,10 @@ namespace
       dealii::DataOut<dim, spacedim> data_out;
       data_out.attach_triangulation(triangulation);
 
-      dealii::Vector<float> partitioning(triangulation.n_active_cells());
+      data_out.
+
+          dealii::Vector<float>
+              partitioning(triangulation.n_active_cells());
       for (unsigned int i = 0; i < partitioning.size(); ++i)
         partitioning(i) = triangulation.locally_owned_subdomain();
       data_out.add_data_vector(partitioning, "partitioning");

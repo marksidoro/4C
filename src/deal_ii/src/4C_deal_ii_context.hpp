@@ -10,11 +10,17 @@
 
 #include "4C_config.hpp"
 
+#include "4C_deal_ii_element_conversion.hpp"
 #include <4C_deal_ii_context_implementation.hpp>
 #include <4C_fem_discretization.hpp>
 #include <4C_fem_general_element.hpp>
 
 #include <deal.II/base/std_cxx20/iota_view.h>
+#include <deal.II/dofs/dof_handler.h>
+#include <deal.II/dofs/dof_tools.h>
+#include <deal.II/fe/fe_system.h>
+#include <deal.II/fe/mapping_fe_field.h>
+#include <deal.II/lac/la_parallel_vector.h>
 #include <deal.II/lac/sparsity_pattern.h>
 
 #include <memory>
@@ -43,6 +49,84 @@ namespace DealiiWrappers
     std::shared_ptr<Internal::ContextImplementation<dim, spacedim>> pimpl_;
   };
 
+
+
+  template <int dim, int spacedim>
+  dealii::MappingFEField<dim, spacedim> create_isoparametric_mapping(
+      DealiiWrappers::Context<dim, spacedim>& context,
+      const Core::FE::Discretization& discretization)
+  {
+    using VectorType = dealii::LinearAlgebra::distributed::Vector<double>;
+
+    FOUR_C_ASSERT(context.pimpl_->finite_elements.size() == 1,
+        "Currently only supported for the case that there is only one finite element in the "
+        "context, since the underlying dealii::MappingFEField does not support multiple finite "
+        "elements.");
+
+    // create an internal dofhandler using the finite element that is provided
+    const auto& fe = context.pimpl_->finite_elements[0];
+    FOUR_C_ASSERT(fe.n_components() == 1, "TODO : support multiple components in the FE.");
+
+    // create an FE System object that has the right dimension
+    dealii::FESystem<dim, spacedim> isoparametric_fe(fe, spacedim);
+
+    // create a DofHandler for the isoparametric mapping
+    dealii::DoFHandler<dim, spacedim> dof_handler(*context.pimpl_->triangulation);
+    dof_handler.distribute_dofs(isoparametric_fe);
+
+    // create ghosted vector for the postions of the nodes
+    auto locally_relevant_dofs = dealii::DoFTools::extract_locally_relevant_dofs(dof_handler);
+    VectorType position_vector;
+    position_vector.reinit(dof_handler.locally_owned_dofs(), locally_relevant_dofs,
+        context.pimpl_->triangulation->get_mpi_communicator());
+
+    // Now fill the position vector with the positions of the nodes
+    for (const auto& cell : dof_handler.active_cell_iterators())
+    {
+      // skip ghost cells
+      if (!cell->is_locally_owned()) continue;
+
+      // get the equivalent element in four_c
+      const auto* element = Internal::to_element(context, discretization, cell);
+      const unsigned int n_nodes = element->num_node();
+      const auto* nodes = element->nodes();
+
+
+      // get the dof indices for the cell
+      const unsigned int dofs_per_cell = cell->get_fe().dofs_per_cell;
+      std::vector<dealii::types::global_dof_index> dof_indices(dofs_per_cell);
+      cell->get_dof_indices(dof_indices);
+
+      FOUR_C_ASSERT(n_nodes * spacedim == dofs_per_cell,
+          "Since this is an isoparametric mapping, the number of nodes x {} must be equal to the "
+          "number of dofs per cell.",
+          spacedim);
+
+      // we now have to assign the postion of the nodes to the dof indices
+      dealii::Vector<double> local_position_vector(dofs_per_cell);
+      auto reordering = ElementConversion::reindex_four_c_to_dealii(element->shape());
+      for (unsigned int n = 0; n < n_nodes; ++n)
+      {
+        const auto local_dealii_index = reordering[n];
+        for (unsigned int d = 0; d < spacedim; ++d)
+        {
+          const auto local_vector_index =
+              isoparametric_fe.component_to_system_index(d, local_dealii_index);
+          local_position_vector[local_vector_index] = nodes[n].x()[d];
+        }
+      }
+      // now we can add the local position vector to the global position vector
+      for (unsigned int i = 0; i < dofs_per_cell; ++i)
+      {
+        // only add local entries
+        if (dof_handler.locally_owned_dofs().is_element(dof_indices[i]))
+        {
+          position_vector[dof_indices[i]] = local_position_vector[i];
+        }
+      }
+    }
+    return dealii::MappingFEField<dim, spacedim>(isoparametric_fe, position_vector);
+  }
 
   /**
    * Make a sparsity pattern for the given context. It is a sparsity pattern for the coupling
@@ -76,8 +160,6 @@ namespace DealiiWrappers
     std::vector<types::global_dof_index> dofs_range;
     std::vector<types::global_dof_index> dofs_domain;
 
-    std::cout << domain_discretization.num_dof_sets() << " dof sets in domain discretization."
-              << std::endl;
     Core::Elements::LocationArray location_array(domain_discretization.num_dof_sets());
 
 
@@ -100,24 +182,14 @@ namespace DealiiWrappers
       dofs_domain.clear();
       dofs_domain.resize(location_array[0].lm_.size());
       std::copy(location_array[0].lm_.begin(), location_array[0].lm_.end(), dofs_domain.begin());
-
-
-
       // speed up insertions by sorting the domain dofs, otherwise this is done
       // for eact row entry
       std::sort(dofs_domain.begin(), dofs_domain.end());
 
-      for (auto dof : dofs_domain)
-      {
-        std::cout << "Column: " << dof << std::endl;
-      }
-
-
       for (auto dof : dofs_range)
       {
-        std::cout << "Row: " << dof << std::endl;
         // Add the coupling from the range dof to the domain dofs
-        sparsity_pattern.add_row_entries(dof, dofs_domain);
+        sparsity_pattern.add_row_entries(dof, dofs_domain, true);
       }
     }
   }

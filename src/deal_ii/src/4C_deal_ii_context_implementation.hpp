@@ -46,6 +46,8 @@ namespace DealiiWrappers
       //! The mapping collection that is used to map the quadrature points from the reference cell
       //! to the real cell.
       dealii::hp::MappingCollection<dim, spacedim> mapping_collection;
+
+      dealii::ObserverPointer<dealii::Triangulation<dim, spacedim>> triangulation;
     };
 
     template <int dim, int spacedim>
@@ -53,10 +55,6 @@ namespace DealiiWrappers
         const Core::FE::Discretization& discretization,
         const typename dealii::Triangulation<dim, spacedim>::cell_iterator& cell)
     {
-      std::cout << "Cell index: " << cell->index() << std::endl;
-      std::cout << "Cell lid: " << context.pimpl_->cell_index_to_element_lid[cell->index()]
-                << std::endl;
-
       return discretization.l_row_element(context.pimpl_->cell_index_to_element_lid[cell->index()]);
     }
 

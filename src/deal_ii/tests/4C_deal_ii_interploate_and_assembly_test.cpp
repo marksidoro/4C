@@ -24,6 +24,7 @@
 #include <deal.II/lac/precondition.h>
 #include <deal.II/lac/solver_cg.h>
 #include <deal.II/lac/sparse_direct.h>
+#include <deal.II/numerics/vector_tools.h>
 #include <deal.II/numerics/vector_tools_interpolate.templates.h>
 #include <Epetra_SerialComm.h>
 
@@ -66,17 +67,8 @@ namespace
     const auto comm = MPI_COMM_WORLD;
 
     Core::FE::Discretization discret{"one_cell", comm, 3};
-    TESTING::fill_discretization_hyper_cube(discret, 1, comm, false);
+    TESTING::fill_discretization_hyper_cube(discret, 3, comm, false);
     DealiiWrappers::Context<dim> context = DealiiWrappers::create_triangulation(tria, discret);
-
-
-
-    // dof_set->assign_degrees_of_freedom(discret, 0, 0);
-    // std::cout << "Number of dofs: " << dof_set->num_global_elements() << std::endl;
-
-    // discret.add_dof_set(dof_set);
-
-
 
     context.pimpl_->mapping_collection =
         DealiiWrappers::ElementConversion::create_linear_mapping_collection(
@@ -113,19 +105,19 @@ namespace
     dealii::SparseMatrix<double> matrix;
     matrix.reinit(sparsity_pattern);
 
-    dealii::Vector<double> global_vector, solution;
-    global_vector.reinit(dof_handler.n_dofs());
+    dealii::Vector<double> rhs, solution;
+    rhs.reinit(dof_handler.n_dofs());
     solution.reinit(dof_handler.n_dofs());
 
     dealii::Vector<double> local_vector;
     dealii::FullMatrix<double> local_matrix;
 
     // Assembly loop:
-    dealii::QGauss<dim> quadrature(2);
-    dealii::hp::QCollection<dim> quadrature_collection(quadrature);
+    dealii::QGauss<dim> quadrature_gauss(4);
+    // dealii::QGaussLobatto<dim> quadrature_lobatto(2);
+    const auto& quadrature = quadrature_gauss;
 
-
-
+    dealii::hp::QCollection<dim> quadrature_collection(quadrature_gauss);
     dealii::FEValues<dim> fe_values_test(deal_fe, quadrature,
         dealii::update_values | dealii::update_JxW_values | dealii::update_quadrature_points);
 
@@ -143,6 +135,7 @@ namespace
       fe_values_test.reinit(cell);
       fe_values_context.reinit(cell);
 
+
       const unsigned int dofs_per_cell_range = cell->get_fe().dofs_per_cell;
       global_dofs_on_cell_deal_ii.resize(dofs_per_cell_range);
       cell->get_dof_indices(global_dofs_on_cell_deal_ii);
@@ -150,63 +143,46 @@ namespace
       const unsigned int dofs_per_cell_domain =
           fe_values_context.get_present_fe_values().dofs_per_cell;
       global_dofs_on_cell_four_c.resize(dofs_per_cell_domain);
-      fe_values_context.get_dof_indices_four_c_ordering(global_dofs_on_cell_four_c);
+
+      // fe_values_context.get_dof_indices_four_c_ordering(global_dofs_on_cell_four_c);
+      // const auto& local_indexing = fe_values_context.local_four_c_indexing();
+
+
+      fe_values_context.get_dof_indices_dealii_ordering(global_dofs_on_cell_four_c);
+      const auto& local_indexing = fe_values_context.local_dealii_indexing();
+
 
       FOUR_C_ASSERT(dofs_per_cell_range == global_dofs_on_cell_deal_ii.size(),
           "The number of dofs per cell in the range discretization does not match the size of the "
           "global dofs vector.");
       local_matrix.reinit(dofs_per_cell_range, dofs_per_cell_domain);
       local_vector.reinit(dofs_per_cell_range);
-
       const auto& fe_values_trial = fe_values_context.get_present_fe_values();
-
       for (unsigned int q_index : fe_values_test.quadrature_point_indices())
       {
         for (auto i : fe_values_test.dof_indices())
         {
-          for (auto j : fe_values_context.shape_indices_four_c())
+          for (auto j : fe_values_trial.dof_indices())
           {
             local_matrix(i, j) += fe_values_test.shape_value(i, q_index) *
-                                  fe_values_trial.shape_value(j, q_index) *
+                                  fe_values_trial.shape_value(local_indexing[j], q_index) *
                                   fe_values_test.JxW(q_index);
           }
           // assemble the rhs contribution only on the test space
-          local_vector(i) = fe_values_test.quadrature_point(q_index)[0];
+          local_vector(i) += fe_values_test.quadrature_point(q_index)[0] *
+                             fe_values_test.shape_value(i, q_index) * fe_values_test.JxW(q_index);
         }
       }  // local assembly
       matrix.add(global_dofs_on_cell_deal_ii, global_dofs_on_cell_four_c, local_matrix);
-      global_vector.add(global_dofs_on_cell_deal_ii, local_vector);
-    }
-    global_vector.print(std::cout);
-    matrix.print(std::cout);
-
-
-    // Now solve the linear system
-    dealii::SolverControl solver_control(1000, 1e-12);
-    dealii::SolverCG<dealii::Vector<double>> solver(solver_control);
-    solution.reinit(global_vector);
-    solver.solve(matrix, solution, global_vector, dealii::PreconditionIdentity());
-
-
-
-    // Copy into parallel vector to compare
-    VectorType parallel_vec_helper;
-    parallel_vec_helper.reinit(solution.size());
-    for (unsigned int i = 0; i < solution.size(); ++i)
-    {
-      parallel_vec_helper[i] = solution[i];
+      rhs.add(global_dofs_on_cell_deal_ii, local_vector);
     }
 
+    dealii::SparseDirectUMFPACK direct_solver;
+    direct_solver.initialize(matrix);
+    solution.reinit(rhs);
+    direct_solver.vmult(solution, rhs);
 
-    DealiiWrappers::VectorConverter<VectorType, dim> vector_mapping{dof_handler, discret, context};
-    vector_mapping.to_four_c(*four_c_vector_result, parallel_vec_helper);
-
-    for (int i = 0; i < four_c_vector->local_length(); ++i)
-    {
-      std::cout << "Four C vector[" << i << "] = " << four_c_vector->operator[](i)
-                << ", result vector[" << i << "] = " << four_c_vector_result->operator[](i)
-                << std::endl;
-    }
+    solution.print(std::cout, 3, false, false);
   }
 
 

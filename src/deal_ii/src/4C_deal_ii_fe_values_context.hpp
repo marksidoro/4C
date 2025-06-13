@@ -20,6 +20,7 @@
 #include <deal.II/fe/fe_simplex_p.h>
 #include <deal.II/fe/fe_system.h>
 #include <deal.II/fe/fe_tools.h>
+#include <deal.II/grid/grid_tools.h>
 #include <deal.II/hp/fe_collection.h>
 #include <deal.II/hp/fe_values.h>
 
@@ -65,28 +66,18 @@ namespace DealiiWrappers
       cell_data_.element = Internal::to_element(context_, discretization_, cell);
 
       cell_data_.four_c_shape_indices =
-          ElementConversion::reindex_dealii_to_four_c(cell_data_.element->shape());
-
-      cell_data_.dealii_shape_indices =
           ElementConversion::reindex_four_c_to_dealii(cell_data_.element->shape());
 
       auto pos = std::find(context_.pimpl_->finite_element_names.begin(),
           context_.pimpl_->finite_element_names.end(),
           ElementConversion::dealii_fe_name(cell_data_.element->shape()));
 
-      std::cout << "FE name size:" << context_.pimpl_->finite_element_names.size() << std::endl;
-      std::cout << "FE size" << context_.pimpl_->finite_elements.size() << std::endl;
-      for (auto name : context_.pimpl_->finite_element_names)
-      {
-        std::cout << "Finite element name: " << name << std::endl;
-      }
 
       FOUR_C_ASSERT(pos != context_.pimpl_->finite_element_names.end(),
           "The finite element name '{}' is not in the finite element collection.",
           Core::FE::cell_type_to_string(cell_data_.element->shape()));
 
       cell_data_.active_index = std::distance(context_.pimpl_->finite_element_names.begin(), pos);
-
       fe_values_.reinit(
           cell, cell_data_.active_index, cell_data_.active_index, cell_data_.active_index);
     }
@@ -99,18 +90,23 @@ namespace DealiiWrappers
      * four c index via four_c_shape_indices[j].
      * @return
      */
-    const std::span<const int>& shape_indices_four_c() const
+    std::span<const int> local_four_c_indexing() const { return cell_data_.four_c_shape_indices; }
+
+
+    /**
+     *
+     * @return
+     */
+    std::ranges::iota_view<int, int> local_dealii_indexing() const
     {
-      return cell_data_.four_c_shape_indices;
+      return std::ranges::iota_view<int, int>(0, cell_data_.four_c_shape_indices.size());
     }
 
-
-    const std::span<const int>& shape_indices_dealii() const
-    {
-      return cell_data_.four_c_shape_indices;
-    }
-
-
+    /**
+     * get the fe_values that is initialized on the cell/element.
+     * Note that this FEValues object is initialized on the dealii finite element
+     * with its internal shape function ordering and Quadrature setup.
+     */
     const dealii::FEValues<dim>& get_present_fe_values() const
     {
       return fe_values_.get_present_fe_values();
