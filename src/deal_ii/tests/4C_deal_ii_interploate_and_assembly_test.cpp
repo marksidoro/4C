@@ -67,12 +67,42 @@ namespace
     const auto comm = MPI_COMM_WORLD;
 
     Core::FE::Discretization discret{"one_cell", comm, 3};
-    TESTING::fill_discretization_hyper_cube(discret, 3, comm, false);
+    // TESTING::fill_discretization_hyper_cube(discret, 3, comm, false);
+
+    bool linear = false;
+    auto transform = [&]<typename Point>(const Point& coords)
+    {
+      Point transformed_coords = coords;
+      if (linear)
+      {
+        transformed_coords[0] = coords[0] + 0.5 * (coords[1] + 1.0);
+        transformed_coords[1] = coords[1] + 0.5 * (coords[0] + 1.0);
+        transformed_coords[2] = coords[2];
+      }
+      else
+      {
+        transformed_coords[0] = coords[0] + 0.25 * (coords[1] + 1.0) * (coords[1] + 1.0);
+        transformed_coords[1] = coords[1];
+        transformed_coords[2] = coords[2];
+      }
+      return transformed_coords;
+    };
+
+    TESTING::fill_undeformed_hex27(discret, comm, false, transform);
+
+
+
     DealiiWrappers::Context<dim> context = DealiiWrappers::create_triangulation(tria, discret);
 
-    context.pimpl_->mapping_collection =
-        DealiiWrappers::ElementConversion::create_linear_mapping_collection(
-            context.pimpl_->finite_elements);
+    dealii::DoFHandler<dim> iso_dof_handler;
+    VectorType iso_vector;
+
+
+    auto isogeometric_mapping =
+        DealiiWrappers::create_isoparametric_mapping(context, discret, iso_vector, iso_dof_handler);
+
+    context.pimpl_->mapping_collection.push_back(isogeometric_mapping);
+    std::cout << context.pimpl_->mapping_collection.size() << std::endl;
 
 
 
@@ -81,13 +111,15 @@ namespace
     for (int i = 0; i < four_c_vector->global_length(); ++i)
     {
       auto node_coords = discret.g_node(i)->x();
+      std::cout << "Node " << i << ": " << node_coords[0] << ", " << node_coords[1] << ", "
+                << node_coords[2] << std::endl;
       four_c_vector->operator[](i) = node_coords[0];
     }
 
     const auto four_c_vector_result = Core::LinAlg::create_vector(*discret.dof_row_map());
 
     dealii::DoFHandler<dim> dof_handler{tria};
-    const dealii::FE_Q<dim> deal_fe(1);
+    const auto& deal_fe = context.pimpl_->finite_elements[0];
     dof_handler.distribute_dofs(deal_fe);
 
 
@@ -113,12 +145,12 @@ namespace
     dealii::FullMatrix<double> local_matrix;
 
     // Assembly loop:
-    dealii::QGauss<dim> quadrature_gauss(4);
-    // dealii::QGaussLobatto<dim> quadrature_lobatto(2);
+    dealii::QGauss<dim> quadrature_gauss(10);
+    // dealii::QGaussLobatto<dim> quadrature_lobatto(5);
     const auto& quadrature = quadrature_gauss;
 
-    dealii::hp::QCollection<dim> quadrature_collection(quadrature_gauss);
-    dealii::FEValues<dim> fe_values_test(deal_fe, quadrature,
+    dealii::hp::QCollection<dim> quadrature_collection(quadrature);
+    dealii::FEValues<dim> fe_values_test(isogeometric_mapping, deal_fe, quadrature,
         dealii::update_values | dealii::update_JxW_values | dealii::update_quadrature_points);
 
     DealiiWrappers::FEValuesContext<dim> fe_values_context(
@@ -144,6 +176,7 @@ namespace
           fe_values_context.get_present_fe_values().dofs_per_cell;
       global_dofs_on_cell_four_c.resize(dofs_per_cell_domain);
 
+
       // fe_values_context.get_dof_indices_four_c_ordering(global_dofs_on_cell_four_c);
       // const auto& local_indexing = fe_values_context.local_four_c_indexing();
 
@@ -160,6 +193,7 @@ namespace
       const auto& fe_values_trial = fe_values_context.get_present_fe_values();
       for (unsigned int q_index : fe_values_test.quadrature_point_indices())
       {
+        auto quad_point = fe_values_test.quadrature_point(q_index);
         for (auto i : fe_values_test.dof_indices())
         {
           for (auto j : fe_values_trial.dof_indices())
@@ -168,8 +202,9 @@ namespace
                                   fe_values_trial.shape_value(local_indexing[j], q_index) *
                                   fe_values_test.JxW(q_index);
           }
+
           // assemble the rhs contribution only on the test space
-          local_vector(i) += fe_values_test.quadrature_point(q_index)[0] *
+          local_vector(i) += ((quad_point[0] + 1) + (quad_point[1] + 1)) *
                              fe_values_test.shape_value(i, q_index) * fe_values_test.JxW(q_index);
         }
       }  // local assembly
@@ -177,12 +212,14 @@ namespace
       rhs.add(global_dofs_on_cell_deal_ii, local_vector);
     }
 
+
+
     dealii::SparseDirectUMFPACK direct_solver;
     direct_solver.initialize(matrix);
     solution.reinit(rhs);
     direct_solver.vmult(solution, rhs);
 
-    solution.print(std::cout, 3, false, false);
+    solution.print(std::cout, 6, false, false);
   }
 
 

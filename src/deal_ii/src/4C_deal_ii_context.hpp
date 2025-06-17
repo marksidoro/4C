@@ -12,7 +12,10 @@
 
 #include "4C_deal_ii_element_conversion.hpp"
 #include <4C_deal_ii_context_implementation.hpp>
+#include <4C_fem_condition.hpp>
+#include <4C_fem_condition_utils.hpp>
 #include <4C_fem_discretization.hpp>
+#include <4C_fem_discretization_utils.hpp>
 #include <4C_fem_general_element.hpp>
 
 #include <deal.II/base/std_cxx20/iota_view.h>
@@ -49,15 +52,49 @@ namespace DealiiWrappers
     std::shared_ptr<Internal::ContextImplementation<dim, spacedim>> pimpl_;
   };
 
-
-
-  template <int dim, int spacedim>
-  dealii::MappingFEField<dim, spacedim> create_isoparametric_mapping(
-      DealiiWrappers::Context<dim, spacedim>& context,
-      const Core::FE::Discretization& discretization)
+  /**
+   * Function to build and fill an AffineConstraints object from the dirichlet boundary conditions
+   * given in the discretization object.
+   * @tparam dim
+   * @tparam spacedim
+   * @tparam number
+   * @param constraints
+   * @param context
+   * @param discretization
+   */
+  template <int dim, int spacedim = dim, typename number = double>
+  void build_equivalent_dirichlet_constraints(dealii::AffineConstraints<number>& constraints,
+      const Context<dim, spacedim>& context, const Core::FE::Discretization& discretization)
   {
-    using VectorType = dealii::LinearAlgebra::distributed::Vector<double>;
+    std::vector<const Core::Conditions::Condition*> conditions;
+    discretization.get_condition(condition_name, conditions);
 
+    auto dbc_handler = Core::FE::Utils::build_dbc(&discretization);
+    Teuchos::ParameterList params;
+    Core::FE::Utils::evaluate_dirichlet(discretization, params, )
+
+
+        constraints.clear();
+    if (conditions.empty())
+    {
+      constraints.close();
+      return;  // Nothing to do if there are no conditions
+    }
+
+
+
+    const auto* condition = conditions[0];
+  }
+
+
+  template <int dim, int spacedim,
+      typename VectorType = dealii::LinearAlgebra::distributed::Vector<double>>
+  dealii::MappingFEField<dim, spacedim, VectorType> create_isoparametric_mapping(
+      DealiiWrappers::Context<dim, spacedim>& context,
+      const Core::FE::Discretization& discretization, VectorType& position_vector,
+      dealii::DoFHandler<dim>& iso_dof_handler)
+
+  {
     FOUR_C_ASSERT(context.pimpl_->finite_elements.size() == 1,
         "Currently only supported for the case that there is only one finite element in the "
         "context, since the underlying dealii::MappingFEField does not support multiple finite "
@@ -71,17 +108,16 @@ namespace DealiiWrappers
     dealii::FESystem<dim, spacedim> isoparametric_fe(fe, spacedim);
 
     // create a DofHandler for the isoparametric mapping
-    dealii::DoFHandler<dim, spacedim> dof_handler(*context.pimpl_->triangulation);
-    dof_handler.distribute_dofs(isoparametric_fe);
+    iso_dof_handler.reinit(*context.pimpl_->triangulation);
+    iso_dof_handler.distribute_dofs(isoparametric_fe);
 
     // create ghosted vector for the postions of the nodes
-    auto locally_relevant_dofs = dealii::DoFTools::extract_locally_relevant_dofs(dof_handler);
-    VectorType position_vector;
-    position_vector.reinit(dof_handler.locally_owned_dofs(), locally_relevant_dofs,
+    auto locally_relevant_dofs = dealii::DoFTools::extract_locally_relevant_dofs(iso_dof_handler);
+    position_vector.reinit(iso_dof_handler.locally_owned_dofs(), locally_relevant_dofs,
         context.pimpl_->triangulation->get_mpi_communicator());
 
     // Now fill the position vector with the positions of the nodes
-    for (const auto& cell : dof_handler.active_cell_iterators())
+    for (const auto& cell : iso_dof_handler.active_cell_iterators())
     {
       // skip ghost cells
       if (!cell->is_locally_owned()) continue;
@@ -102,6 +138,7 @@ namespace DealiiWrappers
           "number of dofs per cell.",
           spacedim);
 
+
       // we now have to assign the postion of the nodes to the dof indices
       dealii::Vector<double> local_position_vector(dofs_per_cell);
       auto reordering = ElementConversion::reindex_four_c_to_dealii(element->shape());
@@ -112,20 +149,22 @@ namespace DealiiWrappers
         {
           const auto local_vector_index =
               isoparametric_fe.component_to_system_index(d, local_dealii_index);
-          local_position_vector[local_vector_index] = nodes[n].x()[d];
+          local_position_vector[local_vector_index] = nodes[n]->x()[d];
         }
       }
       // now we can add the local position vector to the global position vector
       for (unsigned int i = 0; i < dofs_per_cell; ++i)
       {
         // only add local entries
-        if (dof_handler.locally_owned_dofs().is_element(dof_indices[i]))
+        if (iso_dof_handler.locally_owned_dofs().is_element(dof_indices[i]))
         {
           position_vector[dof_indices[i]] = local_position_vector[i];
         }
       }
     }
-    return dealii::MappingFEField<dim, spacedim>(isoparametric_fe, position_vector);
+    const dealii::ComponentMask mask(spacedim, true);
+    return dealii::MappingFEField<dim, spacedim, VectorType>(
+        iso_dof_handler, position_vector, mask);
   }
 
   /**

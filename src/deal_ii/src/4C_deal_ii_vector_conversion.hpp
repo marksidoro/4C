@@ -26,6 +26,8 @@ namespace Core::FE
 namespace DealiiWrappers
 {
 
+
+
   /**
    * @brief Create a Map object that maps from deal.II dofs to 4C gids.
    *
@@ -34,7 +36,8 @@ namespace DealiiWrappers
    *
    *  - The *global numbering* of dofs in this map corresponds to the dof numbering in @p
    *    discretization.
-   *  - The *local ordering* of dofs in this map corresponds to the order of dofs in @p dof_handler.
+   *  - The *local ordering* of dofs in this map corresponds to the order of dofs in @p
+   * dof_handler.
    *
    * This means, that the Map object can be used to import and export vectors and matrices
    * between 4C and deal.II layout via an intermediate vector, which uses the returned
