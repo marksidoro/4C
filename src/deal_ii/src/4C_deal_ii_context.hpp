@@ -18,6 +18,7 @@
 #include <4C_fem_discretization_utils.hpp>
 #include <4C_fem_general_element.hpp>
 
+#include <boost/fusion/container/list/cons.hpp>
 #include <deal.II/base/std_cxx20/iota_view.h>
 #include <deal.II/dofs/dof_handler.h>
 #include <deal.II/dofs/dof_tools.h>
@@ -64,26 +65,48 @@ namespace DealiiWrappers
    */
   template <int dim, int spacedim = dim, typename number = double>
   void build_equivalent_dirichlet_constraints(dealii::AffineConstraints<number>& constraints,
-      const Context<dim, spacedim>& context, const Core::FE::Discretization& discretization)
+      const Core::FE::Discretization& discretization,
+      const Teuchos::ParameterList& params = Teuchos::ParameterList())
   {
-    std::vector<const Core::Conditions::Condition*> conditions;
-    discretization.get_condition(condition_name, conditions);
-
-    auto dbc_handler = Core::FE::Utils::build_dbc(&discretization);
-    Teuchos::ParameterList params;
-    Core::FE::Utils::evaluate_dirichlet(discretization, params, )
+    auto dirichlet_values =
+        std::make_shared<Core::LinAlg::Vector<double>>(*discretization.dof_row_map());
+    auto dirichlet_index_extractor = std::make_shared<Core::LinAlg::MapExtractor>();
 
 
-        constraints.clear();
-    if (conditions.empty())
+    Core::FE::Utils::evaluate_dirichlet(discretization, params, dirichlet_values, nullptr, nullptr,
+        nullptr, dirichlet_index_extractor);
+
+
+    const auto dirichlet_map = dirichlet_index_extractor->cond_map();
+    const auto full_map = dirichlet_index_extractor->full_map();
+
+    dealii::IndexSet dirichlet_indices(dirichlet_map->get_epetra_block_map());
+    dealii::IndexSet full_indices(full_map->get_epetra_block_map());
+
+
+    constraints.clear();
+    constraints.reinit(full_indices, dirichlet_indices);
+
+    for (const auto global_index : dirichlet_indices)
     {
-      constraints.close();
-      return;  // Nothing to do if there are no conditions
+      auto local_index = dirichlet_map->lid(global_index);
+      FOUR_C_ASSERT(local_index != -1,
+          "The local index for the global index {} is -1. This means that the global index was not"
+          "found which should not happen",
+          global_index);
+
+      const auto value = dirichlet_values->operator[](local_index);
+      // test if the value is not zero, since then we have to add an inhomogenity
+      if (std::abs(value) > std::numeric_limits<double>::epsilon())
+      {
+        constraints.set_inhomogeneity(global_index, value);
+      }
+      else
+      {
+        constraints.constrain_dof_to_zero(global_index);
+      }
     }
-
-
-
-    const auto* condition = conditions[0];
+    constraints.close();
   }
 
 
