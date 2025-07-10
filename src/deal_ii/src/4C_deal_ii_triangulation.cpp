@@ -22,8 +22,6 @@ namespace DealiiWrappers
   Context<dim, spacedim> create_triangulation(
       dealii::Triangulation<dim, spacedim>& tria, const Core::FE::Discretization& discretization)
   {
-    static_assert(spacedim == 3);
-
     FOUR_C_ASSERT_ALWAYS(discretization.filled(), "Discretization must be filled.");
 
     const MPI_Comm comm = discretization.get_comm();
@@ -145,6 +143,8 @@ namespace DealiiWrappers
 
     Context<dim, spacedim> context{
         std::make_shared<Internal::ContextImplementation<dim, spacedim>>()};
+    context.pimpl_->discretization = &discretization;
+
 
     // Step 2)
     //
@@ -259,6 +259,9 @@ namespace DealiiWrappers
   }
 
   // --- explicit instantiations --- //
+
+  template Context<2, 2> create_triangulation<2, 2>(
+      dealii::Triangulation<2, 2>&, const Core::FE::Discretization&);
 
   template Context<3, 3> create_triangulation<3, 3>(
       dealii::Triangulation<3, 3>&, const Core::FE::Discretization&);

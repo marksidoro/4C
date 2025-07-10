@@ -102,8 +102,6 @@ namespace
         DealiiWrappers::create_isoparametric_mapping(context, discret, iso_vector, iso_dof_handler);
 
     context.pimpl_->mapping_collection.push_back(isogeometric_mapping);
-    std::cout << context.pimpl_->mapping_collection.size() << std::endl;
-
 
 
     const auto four_c_vector = Core::LinAlg::create_vector(*discret.dof_row_map());
@@ -111,9 +109,7 @@ namespace
     for (int i = 0; i < four_c_vector->global_length(); ++i)
     {
       auto node_coords = discret.g_node(i)->x();
-      std::cout << "Node " << i << ": " << node_coords[0] << ", " << node_coords[1] << ", "
-                << node_coords[2] << std::endl;
-      four_c_vector->operator[](i) = node_coords[0];
+      four_c_vector->operator[](i) = (node_coords[0] + 1) + (node_coords[1] + 1);
     }
 
     const auto four_c_vector_result = Core::LinAlg::create_vector(*discret.dof_row_map());
@@ -177,19 +173,23 @@ namespace
       global_dofs_on_cell_four_c.resize(dofs_per_cell_domain);
 
 
-      // fe_values_context.get_dof_indices_four_c_ordering(global_dofs_on_cell_four_c);
-      // const auto& local_indexing = fe_values_context.local_four_c_indexing();
+      // fe_values_context.get_dof_indices_dealii_ordering(global_dofs_on_cell_four_c);
+      // const auto& local_indexing = fe_values_context.local_dealii_indexing();
 
+      fe_values_context.get_dof_indices_four_c_ordering(global_dofs_on_cell_four_c);
+      const auto& local_indexing = fe_values_context.local_four_c_indexing();
 
-      fe_values_context.get_dof_indices_dealii_ordering(global_dofs_on_cell_four_c);
-      const auto& local_indexing = fe_values_context.local_dealii_indexing();
 
 
       FOUR_C_ASSERT(dofs_per_cell_range == global_dofs_on_cell_deal_ii.size(),
           "The number of dofs per cell in the range discretization does not match the size of the "
           "global dofs vector.");
+
+
       local_matrix.reinit(dofs_per_cell_range, dofs_per_cell_domain);
       local_vector.reinit(dofs_per_cell_range);
+
+
       const auto& fe_values_trial = fe_values_context.get_present_fe_values();
       for (unsigned int q_index : fe_values_test.quadrature_point_indices())
       {
@@ -219,7 +219,21 @@ namespace
     solution.reinit(rhs);
     direct_solver.vmult(solution, rhs);
 
-    solution.print(std::cout, 6, false, false);
+    VectorType solution_distributed;
+    solution_distributed.reinit(solution.size());
+    for (unsigned int i = 0; i < solution.size(); ++i)
+    {
+      solution_distributed.local_element(i) = solution[i];
+    }
+
+    DealiiWrappers::VectorConverter<VectorType, dim> vector_mapping(dof_handler, discret, context);
+    vector_mapping.to_four_c(*four_c_vector_result, solution_distributed);
+
+    for (int i = 0; i < four_c_vector_result->local_length(); ++i)
+    {
+      std::cout << "True: " << four_c_vector_result->operator[](i)
+                << " solution: " << four_c_vector_result->operator[](i) << std::endl;
+    }
   }
 
 

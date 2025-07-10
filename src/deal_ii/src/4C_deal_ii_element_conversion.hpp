@@ -90,7 +90,7 @@ namespace DealiiWrappers::ElementConversion
     }
   }  // namespace Internal
 
-
+  constexpr std::string dealii_fe_name(Core::FE::CellType cell_type);
 
   /**
    * Returns the reindexing of deal.II vertices to 4C vertices for a given cell type. This means
@@ -101,11 +101,29 @@ namespace DealiiWrappers::ElementConversion
   {
     switch (cell_type)
     {
+      // -----------------------------------------------------------------------------------------
+      // dimension 1
       case Core::FE::CellType::line2:
       {
         static constexpr std::array reindex{0, 1};
         return reindex;
       }
+
+      // -----------------------------------------------------------------------------------------
+      // dimension 2
+      case Core::FE::CellType::quad4:
+      {
+        static constexpr std::array reindex{0, 1, 3, 2};
+        return reindex;
+      }
+      case Core::FE::CellType::quad9:
+      {
+        static constexpr std::array reindex{0, 1, 3, 2, 7, 5, 4, 6, 8};
+        return reindex;
+      }
+
+      // -----------------------------------------------------------------------------------------
+      // dimension 3
       case Core::FE::CellType::tet4:
       {
         static constexpr std::array reindex{0, 1, 2, 3};
@@ -148,20 +166,39 @@ namespace DealiiWrappers::ElementConversion
     return reindex_dealii_to_four_c(four_c_cell_type<dim>(fe.get_name().c_str()));
   }
 
+
+
   /**
-   * Returns the reindexing of 4C  vertices to deal.II vertices for a given cell type. This means
-   * that the i-th vertex of a 4C cell corresponds to the reindex[i]-th vertex of the
+   * Returns the reindexing of 4C  vertices to deal.II vertices for a given cell type. This
+   * means that the i-th vertex of a 4C cell corresponds to the reindex[i]-th vertex of the
    * corresponding deal.II cell.
    */
   inline std::span<const int> reindex_four_c_to_dealii(Core::FE::CellType cell_type)
   {
     switch (cell_type)
     {
+      // -----------------------------------------------------------------------------------------
+      // dimension 1
       case Core::FE::CellType::line2:
       {
         static constexpr std::array reindex{0, 1};
         return reindex;
       }
+
+      // -----------------------------------------------------------------------------------------
+      // dimension 2
+      case Core::FE::CellType::quad4:
+      {
+        static constexpr std::array reindex{0, 1, 3, 2};
+        return reindex;
+      }
+      case Core::FE::CellType::quad9:
+      {
+        static constexpr std::array reindex{0, 1, 3, 2, 6, 5, 7, 4, 8};
+        return reindex;
+      }
+      // -----------------------------------------------------------------------------------------
+      // dimension 3
       case Core::FE::CellType::tet4:
       {
         static constexpr std::array reindex{0, 1, 2, 3};
@@ -184,6 +221,46 @@ namespace DealiiWrappers::ElementConversion
             "Unsupported cell type '{}'.", Core::FE::cell_type_to_string(cell_type).c_str());
       }
     }
+  }
+
+  template <int dim, int spacedim = dim>
+  inline std::vector<int> reindex_four_c_to_dealii(
+      Core::FE::CellType cell_type, const unsigned int n_components)
+  {
+    FOUR_C_ASSERT(n_components > 0, "The number of components must be greater than zero.");
+    if (n_components == 1)
+    {
+      // If we only have one component, we can use the scalar reindexing directly
+      return std::vector<int>(
+          reindex_four_c_to_dealii(cell_type).begin(), reindex_four_c_to_dealii(cell_type).end());
+    }
+
+
+    auto name = dealii_fe_name(cell_type);
+    auto fe_scalar = dealii::FETools::get_fe_by_name<dim, spacedim>(name);
+    dealii::FESystem<dim, spacedim> fe_system(*fe_scalar, n_components);
+
+    auto reindex_scalar = reindex_four_c_to_dealii(cell_type);
+    std::vector<int> reindexing(fe_system.dofs_per_cell);
+
+    FOUR_C_ASSERT(fe_system.dofs_per_cell == reindex_scalar.size() * n_components,
+        "The number of dofs per cell in the deal.II finite element does not match the "
+        "number of dofs per cell in the 4C finite element.");
+
+    for (unsigned int c = 0; c < n_components; ++c)
+    {
+      for (unsigned int dof = 0; dof < reindex_scalar.size(); ++dof)
+      {
+        // get the dealii index through the FESystem since the
+        // actual indexing is an implementation detail within deal.II that may change
+        const auto current_dealii_index =
+            fe_system.component_to_system_index(c, reindex_scalar[dof]);
+        // in 4C, the dof indices are grouped per node, so we need to iterate over the components
+        const auto current_four_c_index = c + dof * n_components;
+        reindexing[current_four_c_index] = current_dealii_index;
+      }
+    }
+    return reindexing;
   }
 
   /**
@@ -212,6 +289,7 @@ namespace DealiiWrappers::ElementConversion
     switch (element->shape())
     {
       case Core::FE::CellType::line2:
+      case Core::FE::CellType::quad4:
       case Core::FE::CellType::tet4:
       case Core::FE::CellType::hex8:
       {
@@ -259,8 +337,19 @@ namespace DealiiWrappers::ElementConversion
   {
     switch (cell_type)
     {
+      // -----------------------------------------------------------------------------------------
+      // dimension 1
       case Core::FE::CellType::line2:
         return "FE_Q<1>(1)";
+      // -----------------------------------------------------------------------------------------
+      // dimension 2
+      case Core::FE::CellType::quad4:
+        return "FE_Q<2>(1)";
+      case Core::FE::CellType::quad9:
+        return "FE_Q<2>(2)";
+
+      // -----------------------------------------------------------------------------------------
+      // dimension 3
       case Core::FE::CellType::tet4:
         return "FE_SimplexP(1)";
       case Core::FE::CellType::hex8:

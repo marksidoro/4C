@@ -50,6 +50,41 @@ namespace DealiiWrappers
   template <int dim, int spacedim = dim>
   struct Context
   {
+    const Core::Elements::Element* to_element(
+        const typename dealii::Triangulation<dim, spacedim>::cell_iterator& cell) const
+    {
+      FOUR_C_ASSERT(&cell->get_triangulation() == pimpl_->triangulation.get(),
+          "The cell iterator does not belong to the triangulation of this context.");
+      return pimpl_->discretization->l_row_element(
+          pimpl_->cell_index_to_element_lid[cell->index()]);
+    }
+
+    const dealii::FiniteElement<dim, spacedim>& fe(
+        const typename dealii::Triangulation<dim, spacedim>::cell_iterator& cell) const
+    {
+      FOUR_C_ASSERT(&cell->get_triangulation() == pimpl_->triangulation.get(),
+          "The cell iterator does not belong to the triangulation of this context.");
+      const auto* element = to_element(cell);
+      auto iter = std::find(pimpl_->finite_element_names.begin(),
+          pimpl_->finite_element_names.end(), ElementConversion::dealii_fe_name(element->shape()));
+
+      FOUR_C_ASSERT(iter != pimpl_->finite_element_names.end(),
+          "The finite element name '{}' is not in the finite element collection.",
+          Core::FE::cell_type_to_string(element->shape()));
+      return pimpl_->finite_elements[std::distance(pimpl_->finite_element_names.begin(), iter)];
+    }
+
+    void get_dof_indices_four_c_ordering(
+        const typename dealii::Triangulation<dim, spacedim>::cell_iterator& cell,
+        std::vector<dealii::types::global_dof_index>& dof_indices) const
+    {
+      const auto* element = to_element(cell);
+      Core::Elements::LocationArray location_array(pimpl_->discretization->num_dof_sets());
+      element->location_vector(*pimpl_->discretization, location_array);
+      dof_indices.resize(location_array[0].lm_.size());
+      std::copy(location_array[0].lm_.begin(), location_array[0].lm_.end(), dof_indices.begin());
+    }
+
     std::shared_ptr<Internal::ContextImplementation<dim, spacedim>> pimpl_;
   };
 
@@ -63,51 +98,51 @@ namespace DealiiWrappers
    * @param context
    * @param discretization
    */
-  template <int dim, int spacedim = dim, typename number = double>
-  void build_equivalent_dirichlet_constraints(dealii::AffineConstraints<number>& constraints,
-      const Core::FE::Discretization& discretization,
-      const Teuchos::ParameterList& params = Teuchos::ParameterList())
-  {
-    auto dirichlet_values =
-        std::make_shared<Core::LinAlg::Vector<double>>(*discretization.dof_row_map());
-    auto dirichlet_index_extractor = std::make_shared<Core::LinAlg::MapExtractor>();
+  /* template <int dim, int spacedim = dim, typename number = double>
+   void build_equivalent_dirichlet_constraints(dealii::AffineConstraints<number>& constraints,
+       const Core::FE::Discretization& discretization,
+       const Teuchos::ParameterList& params = Teuchos::ParameterList())
+   {
+     auto dirichlet_values =
+         std::make_shared<Core::LinAlg::Vector<double>>(*discretization.dof_row_map());
+     auto dirichlet_index_extractor = std::make_shared<Core::LinAlg::MapExtractor>();
 
 
-    Core::FE::Utils::evaluate_dirichlet(discretization, params, dirichlet_values, nullptr, nullptr,
-        nullptr, dirichlet_index_extractor);
+     Core::FE::Utils::evaluate_dirichlet(discretization, params, dirichlet_values, nullptr, nullptr,
+         nullptr, dirichlet_index_extractor);
 
 
-    const auto dirichlet_map = dirichlet_index_extractor->cond_map();
-    const auto full_map = dirichlet_index_extractor->full_map();
+     const auto dirichlet_map = dirichlet_index_extractor->cond_map();
+     const auto full_map = dirichlet_index_extractor->full_map();
 
-    dealii::IndexSet dirichlet_indices(dirichlet_map->get_epetra_block_map());
-    dealii::IndexSet full_indices(full_map->get_epetra_block_map());
+     dealii::IndexSet dirichlet_indices(dirichlet_map->get_epetra_block_map());
+     dealii::IndexSet full_indices(full_map->get_epetra_block_map());
 
 
-    constraints.clear();
-    constraints.reinit(full_indices, dirichlet_indices);
+     constraints.clear();
+     constraints.reinit(full_indices, dirichlet_indices);
 
-    for (const auto global_index : dirichlet_indices)
-    {
-      auto local_index = dirichlet_map->lid(global_index);
-      FOUR_C_ASSERT(local_index != -1,
-          "The local index for the global index {} is -1. This means that the global index was not"
-          "found which should not happen",
-          global_index);
+     for (const auto global_index : dirichlet_indices)
+     {
+       auto local_index = dirichlet_map->lid(global_index);
+       FOUR_C_ASSERT(local_index != -1,
+           "The local index for the global index {} is -1. This means that the global index was not"
+           "found which should not happen",
+           global_index);
 
-      const auto value = dirichlet_values->operator[](local_index);
-      // test if the value is not zero, since then we have to add an inhomogenity
-      if (std::abs(value) > std::numeric_limits<double>::epsilon())
-      {
-        constraints.set_inhomogeneity(global_index, value);
-      }
-      else
-      {
-        constraints.constrain_dof_to_zero(global_index);
-      }
-    }
-    constraints.close();
-  }
+       const auto value = dirichlet_values->operator[](local_index);
+       // test if the value is not zero, since then we have to add an inhomogenity
+       if (std::abs(value) > std::numeric_limits<double>::epsilon())
+       {
+         constraints.set_inhomogeneity(global_index, value);
+       }
+       else
+       {
+         constraints.constrain_dof_to_zero(global_index);
+       }
+     }
+     constraints.close();
+   }*/
 
 
   template <int dim, int spacedim,
@@ -124,8 +159,15 @@ namespace DealiiWrappers
         "elements.");
 
     // create an internal dofhandler using the finite element that is provided
-    const auto& fe = context.pimpl_->finite_elements[0];
-    FOUR_C_ASSERT(fe.n_components() == 1, "TODO : support multiple components in the FE.");
+    // this is potentially a multicomponent system, so we have to get
+    // the scalar valued finite element
+    const auto& fe_system = context.pimpl_->finite_elements[0];
+    FOUR_C_ASSERT(fe_system.n_base_elements() == 1,
+        "The finite element must have exactly one base element, since we are creating an "
+        "isoparametric mapping. This is not the case for the finite element '{}'.",
+        fe_system.get_name());
+    const auto& fe = fe_system.base_element(0);
+
 
     // create an FE System object that has the right dimension
     dealii::FESystem<dim, spacedim> isoparametric_fe(fe, spacedim);
@@ -157,7 +199,8 @@ namespace DealiiWrappers
       cell->get_dof_indices(dof_indices);
 
       FOUR_C_ASSERT(n_nodes * spacedim == dofs_per_cell,
-          "Since this is an isoparametric mapping, the number of nodes x {} must be equal to the "
+          "Since this is an isoparametric mapping, the number of nodes x {} must be equal to "
+          "the "
           "number of dofs per cell.",
           spacedim);
 

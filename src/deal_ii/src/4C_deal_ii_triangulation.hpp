@@ -48,6 +48,7 @@ namespace DealiiWrappers
   Context<dim, spacedim> create_triangulation(
       dealii::Triangulation<dim, spacedim>& tria, const Core::FE::Discretization& discretization);
 
+
 }  // namespace DealiiWrappers
 
 FOUR_C_NAMESPACE_CLOSE

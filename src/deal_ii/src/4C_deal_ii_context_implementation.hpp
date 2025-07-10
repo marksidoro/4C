@@ -48,6 +48,7 @@ namespace DealiiWrappers
       dealii::hp::MappingCollection<dim, spacedim> mapping_collection;
 
       dealii::ObserverPointer<dealii::Triangulation<dim, spacedim>> triangulation;
+      const Core::FE::Discretization* discretization = nullptr;
     };
 
     template <int dim, int spacedim>
