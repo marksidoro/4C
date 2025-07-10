@@ -201,9 +201,14 @@ namespace DealiiFSI
     dealii::LinearAlgebra::distributed::Vector<double> iso_vector;
 
 
-    auto isogeometric_mapping = DealiiWrappers::create_isoparametric_mapping(
-        context, *structdis, iso_vector, iso_dof_handler);
-    context.pimpl_->mapping_collection.push_back(isogeometric_mapping);
+    // auto isogeometric_mapping = DealiiWrappers::create_isoparametric_mapping(
+    //       context, *structdis, iso_vector, iso_dof_handler);
+
+
+    // context.pimpl_->mapping_collection.push_back(isogeometric_mapping);
+    context.pimpl_->mapping_collection.push_back(dealii::MappingQ1<dim>());
+
+
 
     InterfaceMatcher<dim> matcher =
         DealiiFSI::make_interface_matcher_across_boundary(solid_tria, fluid_tria, 1e-14);
@@ -225,11 +230,12 @@ namespace DealiiFSI
 
       dealii::FEFaceValues<dim> fe_values_stokes(stokes_problem.get_stokes_fe(), quadrature,
           dealii::update_values | dealii::update_gradients | dealii::update_JxW_values |
-              dealii::update_quadrature_points);
+              dealii::update_quadrature_points | dealii::update_normal_vectors);
 
       DealiiWrappers::FEFaceValuesContext<dim> fe_values_solid(context, *structdis,
           quadrature_collection,
-          dealii::update_values | dealii::update_JxW_values | dealii::update_normal_vectors);
+          dealii::update_values | dealii::update_JxW_values | dealii::update_normal_vectors |
+              dealii::update_mapping);
 
 
       std::vector<dealii::types::global_dof_index> global_dofs_on_cell_stokes;
@@ -245,6 +251,11 @@ namespace DealiiFSI
         const auto& cell_domain =
             (*interface_pair)
                 .second.cell->as_dof_handler_iterator(stokes_problem.get_dof_handler());
+
+        FOUR_C_ASSERT(cell_range->face((*interface_pair).first.face)->center() ==
+                          cell_domain->face((*interface_pair).second.face)->center(),
+            "Centers must match");
+
         fe_values_solid.reinit(cell_range, (*interface_pair).first.face);
         fe_values_stokes.reinit(cell_domain, (*interface_pair).second.face);
 
@@ -267,18 +278,19 @@ namespace DealiiFSI
         {
           const dealii::Tensor<1, dim> normal_vector = phi_solid.normal_vector(q_index);
           // local assembly loop
-          for (const auto i : phi_solid.dof_indices())
+          for (unsigned int i = 0; i < phi_solid.dofs_per_cell; ++i)
           {
             for (const auto j : phi_stokes.dof_indices())
             {
               const auto stokes_sym_grad = phi_stokes[velocities].symmetric_gradient(j, q_index);
               const auto stokes_pressure = phi_stokes[pressure].value(j, q_index);
               dealii::Tensor<1, dim> solid_value_vector;
-              const auto component =
-                  (phi_solid.get_fe().system_to_component_index(local_indexing[i]).first + 1) % 2;
-              solid_value_vector[component] = phi_solid.shape_value(local_indexing[i], q_index);
-
-              local_interface_matrix(i, j) +=
+              for (unsigned int c = 0; c < dim; ++c)
+              {
+                solid_value_vector[c] =
+                    phi_solid.shape_value_component(local_indexing[i], q_index, c);
+              }
+              local_interface_matrix(i, j) -=
                   (2 * stokes_problem.get_viscosity() * (stokes_sym_grad * normal_vector) -
                       stokes_pressure * normal_vector) *
                   solid_value_vector * phi_stokes.JxW(q_index);
@@ -290,8 +302,8 @@ namespace DealiiFSI
       }
     }
 
-    /*
-    // update rhs
+
+    /*// update rhs
     {
       dealii::QGauss<dim - 1> quadrature_gauss(5);
       const auto& quadrature = quadrature_gauss;
@@ -325,20 +337,18 @@ namespace DealiiFSI
           for (const auto i : phi_solid.dof_indices())
           {
             dealii::Tensor<1, dim> solid_value_vector;
-            const auto component =
-                phi_solid.get_fe().system_to_component_index(local_indexing[i]).first;
-            solid_value_vector[component] = phi_solid.shape_value(local_indexing[i], q_index);
-            // constant neuman boundary of a force from left to right
+            for (unsigned int c = 0; c < dim; ++c)
+            {
+              solid_value_vector[c] =
+                  phi_solid.shape_value_component(local_indexing[i], q_index, c);
+            }
             solid_rhs_vector[i] +=
                 constant_force_vector * solid_value_vector * phi_solid.JxW(q_index);
           }
         }
         solid_rhs.add(global_dofs_on_cell_solid, solid_rhs_vector);
       }
-    }
-    */
-
-
+    }*/
 
     dealii::TrilinosWrappers::SparseMatrix fluid_block, solid_block, interface_block, zero_block;
     fluid_block.reinit(fluid_system_matrix);

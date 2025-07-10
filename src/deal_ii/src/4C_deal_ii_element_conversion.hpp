@@ -247,9 +247,9 @@ namespace DealiiWrappers::ElementConversion
         "The number of dofs per cell in the deal.II finite element does not match the "
         "number of dofs per cell in the 4C finite element.");
 
-    for (unsigned int c = 0; c < n_components; ++c)
+    for (unsigned int dof = 0; dof < reindex_scalar.size(); ++dof)
     {
-      for (unsigned int dof = 0; dof < reindex_scalar.size(); ++dof)
+      for (unsigned int c = 0; c < n_components; ++c)
       {
         // get the dealii index through the FESystem since the
         // actual indexing is an implementation detail within deal.II that may change

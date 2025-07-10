@@ -223,8 +223,8 @@ namespace DealiiWrappers
       }
 
       // reinit internal fe_values object
-      fe_face_values_.reinit(
-          cell, cell_data_.active_index, cell_data_.active_index, cell_data_.active_index);
+      fe_face_values_.reinit(cell, face_index, cell_data_.active_index, cell_data_.active_index,
+          cell_data_.active_index);
     }
 
     /**
