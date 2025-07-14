@@ -3175,6 +3175,37 @@ namespace Core::FE
   }
 
   /*!
+ \brief Fill a matrix with first shape function derivatives evaluated at given point
+ */
+  template <class VectorType, class MatrixType, unsigned dim>
+  static void shape_function_deriv1_dim(
+      const VectorType& xsi, MatrixType& d, Core::FE::CellType distype)
+  {
+    switch (dim)
+    {
+      case 1:
+      {
+        Core::FE::shape_function_1d_deriv1(d, xsi(0), distype);
+        break;
+      }
+      case 2:
+      {
+        Core::FE::shape_function_2d_deriv1(d, xsi(0), xsi(1), distype);
+        break;
+      }
+      case 3:
+      {
+        Core::FE::shape_function_3d_deriv1(d, xsi(0), xsi(1), xsi(2), distype);
+        break;
+      }
+      default:
+        FOUR_C_THROW("dimension of the element is not correct");
+        break;
+    }
+    return;
+  }
+
+  /*!
    \brief Fill a matrix with second shape function derivatives evaluated at given point
    */
   template <Core::FE::CellType distype, class VectorType, class MatrixType>
