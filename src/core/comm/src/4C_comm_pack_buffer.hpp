@@ -111,13 +111,13 @@ namespace Core::Communication
 #ifdef FOUR_C_ENABLE_ASSERTIONS
       // Check that the type matches the type that was packed.
       std::size_t hash;
-      std::memcpy(&hash, &data_[position_], sizeof(hash));
+      std::memcpy(&hash, data_.data() + position_, sizeof(hash));
       position_ += sizeof(hash);
       FOUR_C_ASSERT(hash == typeid(T).hash_code(),
           "Type mismatch during unpacking. Tried to extract type {}", typeid(T).name());
 #endif
 
-      memcpy(&stuff, &data_[position_], sizeof(T));
+      memcpy(&stuff, data_.data() + position_, sizeof(T));
       position_ += sizeof(T);
     }
 
@@ -135,14 +135,15 @@ namespace Core::Communication
 #ifdef FOUR_C_ENABLE_ASSERTIONS
       // Check that the type matches the type that was packed.
       std::size_t hash;
-      std::memcpy(&hash, &data_[position_], sizeof(hash));
+      std::memcpy(&hash, data_.data() + position_, sizeof(hash));
       position_ += sizeof(hash);
       FOUR_C_ASSERT(hash == typeid(T).hash_code(),
           "Type mismatch during unpacking. Tried to extract type {}", typeid(T).name());
 #endif
 
-
-      memcpy(stuff, &data_[position_], stuff_size);
+      FOUR_C_ASSERT(position_ + stuff_size <= data_.size(),
+          "UnpackBuffer: Trying to extract more data than available in the buffer.");
+      memcpy(stuff, data_.data() + position_, stuff_size);
       position_ += stuff_size;
     }
 
@@ -153,17 +154,19 @@ namespace Core::Communication
       requires std::is_trivially_copyable_v<T>
     void peek(T& stuff) const
     {
+      // copy into local variable since we modify it in debug mode during to get the hash
       std::size_t position = position_;
 
 #ifdef FOUR_C_ENABLE_ASSERTIONS
       // Check that the type matches the type that was packed.
       std::size_t hash;
-      std::memcpy(&hash, &data_[position_], sizeof(hash));
+      std::memcpy(&hash, data_.data() + position_, sizeof(hash));
       position += sizeof(hash);
       FOUR_C_ASSERT(hash == typeid(T).hash_code(), "Type mismatch during unpacking.");
 #endif
-
-      memcpy(&stuff, &data_[position], sizeof(T));
+      FOUR_C_ASSERT(position < data_.size(),
+          "UnpackBuffer: Trying to extract more data than available in the buffer.");
+      memcpy(&stuff, data_.data() + position, sizeof(T));
     }
 
     /**
