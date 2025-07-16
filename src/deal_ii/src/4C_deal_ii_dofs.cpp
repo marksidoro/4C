@@ -20,6 +20,8 @@ namespace DealiiWrappers
   void assign_fes_and_dofs(
       const Context<dim, spacedim>& context, dealii::DoFHandler<dim, spacedim>& dof_handler)
   {
+    FOUR_C_ASSERT(&dof_handler.get_triangulation() == &context.get_triangulation(),
+        "The DoFHandler must be associated with the triangulation of the context.");
     // Loop all cells again and set the correct fe index within the collection
     for (const auto& cell : dof_handler.active_cell_iterators())
     {

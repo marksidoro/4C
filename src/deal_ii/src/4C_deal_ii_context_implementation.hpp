@@ -27,15 +27,6 @@ namespace DealiiWrappers
 
   namespace Internal
   {
-    template <int dim, int spacedim>
-    const Core::Elements::Element* to_element(const DealiiWrappers::Context<dim, spacedim>& context,
-        const typename dealii::Triangulation<dim, spacedim>::cell_iterator& cell)
-    {
-      return context.get_discretization().l_row_element(
-          context.pimpl_->cell_index_to_element_lid[cell->index()]);
-    }
-
-
     /**
      * Generate a Gauss quadrature collection that is sufficient to integrate polynomials of degree
      * 2 * (deg_shape + deg_mapping) + 1 on all elements.

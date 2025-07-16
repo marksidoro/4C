@@ -53,10 +53,15 @@ namespace DealiiWrappers
 
 
   /**
-   * This class holds data which helps other classes and functions in this namespace to understand
-   * the link between 4C and deal.II data structures. There is no documented and supported
-   * functionality for this class. In fact, you should not try to do anything with the internals of
-   * this class.
+   * @brief Context class that allows to translate between a 4C discretization and a deal.II
+   * Triangulation together with some FE intformation.
+   *
+   * This class contains all the necessary information to translate discretizations from 4C to
+   * deal.II.
+   * It is built on a (non owned) pair of objects that describe the Finite Element discretization
+   * in the two frameworks that describe the same mesh and the same mathematical finite element
+   * setup.
+   * TODO: finish this up
    */
   template <int dim, int spacedim = dim>
   class Context
@@ -69,11 +74,11 @@ namespace DealiiWrappers
 
 
 
-    const dealii::Triangulation<dim, spacedim>& triangulation;
-    const Core::FE::Discretization& discretization;
+    const dealii::Triangulation<dim, spacedim>& triangulation_;
+    const Core::FE::Discretization& discretization_;
 
     // Store the local mapping between deal.II cells and 4C elements
-    std::vector<int> cell_index_to_element_lid;
+    std::vector<int> cell_index_to_element_lid_;
     // vector holding a list of active fe indices for each cell in the triangulation.
     // this is used to track which fe/mapping is active on a given cell/element.
     std::vector<unsigned int> active_fe_indices;
@@ -147,34 +152,44 @@ namespace DealiiWrappers
   template <int dim, int spacedim>
   Context<dim, spacedim>::Context(const dealii::Triangulation<dim, spacedim>& triangulation,
       const Core::FE::Discretization& discretization)
-      : triangulation(triangulation), discretization(discretization)
+      : triangulation_(triangulation), discretization_(discretization)
   {
   }
+
+
   template <int dim, int spacedim>
   const dealii::Triangulation<dim, spacedim>& Context<dim, spacedim>::get_triangulation() const
   {
-    return triangulation;
+    return triangulation_;
   }
+
+
   template <int dim, int spacedim>
   const Core::FE::Discretization& Context<dim, spacedim>::get_discretization() const
   {
-    return discretization;
+    return discretization_;
   }
+
+
   template <int dim, int spacedim>
   unsigned int Context<dim, spacedim>::n_finite_elements() const
   {
     return finite_elements.size();
   }
+
+
   template <int dim, int spacedim>
   const dealii::hp::FECollection<dim, spacedim>& Context<dim, spacedim>::get_finite_elements() const
   {
     return finite_elements;
   }
+
+
   template <int dim, int spacedim>
   unsigned int Context<dim, spacedim>::get_active_fe_index(
       const typename dealii::Triangulation<dim, spacedim>::cell_iterator& cell) const
   {
-    FOUR_C_ASSERT(&cell->get_triangulation() == &triangulation,
+    FOUR_C_ASSERT(&cell->get_triangulation() == &triangulation_,
         "The cell iterator does not belong to the triangulation of this context.");
     FOUR_C_ASSERT(cell->active_cell_index() < active_fe_indices.size(),
         "The active cell index {} is out of bounds for the active cell indices vector of size "
@@ -182,20 +197,26 @@ namespace DealiiWrappers
         cell->active_cell_index(), active_fe_indices.size());
     return active_fe_indices[cell->active_cell_index()];
   }
+
+
   template <int dim, int spacedim>
   const Core::Elements::Element* Context<dim, spacedim>::to_element(
       const typename dealii::Triangulation<dim, spacedim>::cell_iterator& cell) const
   {
-    FOUR_C_ASSERT(&cell->get_triangulation() == &triangulation,
+    FOUR_C_ASSERT(&cell->get_triangulation() == &triangulation_,
         "The cell iterator does not belong to the triangulation of this context.");
-    return discretization.l_row_element(cell_index_to_element_lid[cell->index()]);
+    return discretization_.l_row_element(cell_index_to_element_lid_[cell->index()]);
   }
+
+
   template <int dim, int spacedim>
   const dealii::FiniteElement<dim, spacedim>& Context<dim, spacedim>::fe_on_cell(
       const typename dealii::Triangulation<dim, spacedim>::cell_iterator& cell) const
   {
     return finite_elements[get_active_fe_index(cell)];
   }
+
+
   template <int dim, int spacedim>
   void Context<dim, spacedim>::get_dof_indices_four_c_ordering(
       const typename dealii::Triangulation<dim, spacedim>::cell_iterator& cell,
