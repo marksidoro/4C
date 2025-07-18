@@ -526,6 +526,7 @@ std::unique_ptr<Core::IO::MeshReader> Global::read_discretization(
     }
 
     case Core::ProblemType::structure:
+    case Core::ProblemType::dealii_fsi:
     {
       switch (distype)
       {

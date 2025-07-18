@@ -24,6 +24,7 @@ namespace Core
     art_net,             ///< arterial network problem _1D_ARTERY_
     biofilm_fsi,         ///< biofilm growth problem
     cardiac_monodomain,  ///< Cardiac electrophsiology problem
+    dealii_fsi,          //< FSI problem using deal.II for the fluid
     ehl,        ///< elastohydrodynamic lubrication problem (or lubrication structure interaction)
     elch,       ///< electrochemical problem
     fluid,      ///< fluid problem

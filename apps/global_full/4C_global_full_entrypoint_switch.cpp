@@ -37,6 +37,10 @@
 #include "4C_tsi_dyn.hpp"
 #include "4C_utils_enum.hpp"
 
+#ifdef FOUR_C_WITH_DEAL_II
+#include "4C_deal_ii_fsi_main.hpp"
+#endif  // FOUR_C_WITH_DEAL_II
+
 /**
  * \brief The main entrypoint for the 4C multiphysics application.
  *
@@ -81,6 +85,11 @@ void entrypoint_switch()
     case Core::ProblemType::fluid_ale:
       fluid_ale_drt();
       break;
+#ifdef FOUR_C_WITH_DEAL_II
+    case Core::ProblemType::dealii_fsi:
+      DealiiFSI::run();
+      break;
+#endif  // FOUR_C_WITH_DEAL_II
 
     case Core::ProblemType::fsi:
     case Core::ProblemType::fsi_redmodels:
