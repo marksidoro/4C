@@ -307,6 +307,186 @@ namespace
       solution -= four_c_vector_result;
       return solution.l2_norm();  // return the error norm
     }
+    double run_four_c_range(bool vector_valued = false)
+    {
+      const auto comm = MPI_COMM_WORLD;
+      const unsigned int n_components = vector_valued ? dim : 1;
+
+      dealii::parallel::fullydistributed::Triangulation<dim> tria(comm);
+
+      Core::FE::Discretization discret{"one_cell", comm, dim};
+      fill_function(discret, vector_valued, transform);
+
+      DealiiWrappers::Context<dim> context = DealiiWrappers::create_triangulation(tria, discret);
+      auto local_four_c_dofs = context.locally_owned_dofs();
+
+
+      auto isogeometric_mapping =
+          // DealiiWrappers::MappingContext<dim>::create_linear_mapping(context);
+          DealiiWrappers::MappingContext<dim>::create_isoparametric_mapping(context);
+      dealii::DoFHandler<dim> dof_handler{tria};
+      const auto& deal_fe = context.get_finite_elements()[0];
+      dof_handler.distribute_dofs(deal_fe);
+
+
+      EXPECT_EQ(dof_handler.n_dofs(), discret.dof_row_map()->num_global_elements())
+          << "The number of dofs in the deal.II DoFHandler does not match the number of dofs in "
+             "the ";
+
+      auto locally_relevant_dofs_four_c = context.dofs_on_local_cells();
+      dealii::DynamicSparsityPattern dsp(
+          context.n_dofs(), dof_handler.n_dofs(), locally_relevant_dofs_four_c);
+      DealiiWrappers::make_context_sparsity_pattern<true>(context, dof_handler, dsp);
+
+      dealii::SparsityTools::distribute_sparsity_pattern(
+          dsp, local_four_c_dofs, comm, locally_relevant_dofs_four_c);
+
+      dealii::TrilinosWrappers::SparseMatrix matrix;
+      matrix.reinit(local_four_c_dofs, dof_handler.locally_owned_dofs(), dsp, comm, true);
+
+
+
+      auto locally_relevant_dofs = dealii::DoFTools::extract_locally_relevant_dofs(dof_handler);
+      VectorType rhs, solution;
+      solution.reinit(dof_handler.locally_owned_dofs(), comm);
+      rhs.reinit(local_four_c_dofs, comm);
+
+
+      // =======================================================================================
+      // Assembly of the matrix and rhs vector
+      {
+        dealii::Vector<double> local_vector;
+        dealii::FullMatrix<double> local_matrix;
+
+
+        auto max_degree = std::max(deal_fe.degree, context.get_finite_elements().max_degree());
+        // Assembly loop:
+        dealii::QGauss<dim> quadrature_gauss(max_degree + 1);
+        const auto& quadrature = quadrature_gauss;
+
+        dealii::hp::QCollection<dim> quadrature_collection(quadrature);
+        dealii::FEValues<dim> fe_values_deal(isogeometric_mapping.get_mapping_collection()[0],
+            deal_fe, quadrature,
+            dealii::update_values | dealii::update_JxW_values | dealii::update_quadrature_points);
+
+        DealiiWrappers::FEValuesContext<dim> fe_values_four_c(
+            isogeometric_mapping.get_mapping_collection(), context, quadrature_collection,
+            dealii::update_values | dealii::update_JxW_values | dealii::update_quadrature_points);
+
+        std::vector<double> evaluated_values;
+
+        std::vector<dealii::types::global_dof_index> global_dofs_on_cell_deal_ii;
+        std::vector<dealii::types::global_dof_index> global_dofs_on_cell_four_c;
+
+
+        for (const auto& cell : dof_handler.active_cell_iterators())
+        {
+          if (not cell->is_locally_owned()) continue;
+
+          fe_values_deal.reinit(cell);
+          fe_values_four_c.reinit(cell);
+
+
+          const unsigned int dofs_per_cell_deal = cell->get_fe().dofs_per_cell;
+          global_dofs_on_cell_deal_ii.resize(dofs_per_cell_deal);
+          cell->get_dof_indices(global_dofs_on_cell_deal_ii);
+
+          const unsigned int dofs_per_cell_four_c =
+              fe_values_four_c.get_present_fe_values().dofs_per_cell;
+          global_dofs_on_cell_four_c.resize(dofs_per_cell_four_c);
+
+
+          // fe_values_context.get_dof_indices_dealii_ordering(global_dofs_on_cell_four_c);
+          // const auto& local_indexing = fe_values_context.local_dealii_indexing();
+
+          fe_values_four_c.get_dof_indices_four_c_ordering(global_dofs_on_cell_four_c);
+          const auto& local_indexing_four_c = fe_values_four_c.local_four_c_indexing();
+
+          const auto& local_indexing_deal =
+              std::ranges::iota_view<unsigned, unsigned>(0, dofs_per_cell_deal);
+
+
+
+          const auto& dofs_per_cell_range = dofs_per_cell_four_c;
+          const auto& dofs_per_cell_domain = dofs_per_cell_deal;
+
+
+          local_matrix.reinit(dofs_per_cell_range, dofs_per_cell_domain);
+          local_vector.reinit(dofs_per_cell_range);
+
+          const auto& fe_trial = fe_values_deal.get_present_fe_values();
+          const auto& fe_test = fe_values_four_c.get_present_fe_values();
+
+          const auto& global_dofs_range = global_dofs_on_cell_four_c;
+          const auto& global_dofs_domain = global_dofs_on_cell_deal_ii;
+
+          const auto& local_indexing_range = local_indexing_four_c;
+          const auto& local_indexing_domain = local_indexing_deal;
+
+
+
+          for (unsigned int q_index : fe_test.quadrature_point_indices())
+          {
+            auto quad_point = fe_test.quadrature_point(q_index);
+            for (auto i : fe_test.dof_indices())
+            {
+              for (auto j : fe_trial.dof_indices())
+              {
+                /**
+                 * collapses to the following for n_components = 1:
+                 *
+                 * local_matrix(i, j) += fe_values_test.shape_value(i, q_index) *
+                                      fe_values_trial.shape_value(local_indexing[j], q_index) *
+                                      fe_values_test.JxW(q_index);
+                 */
+                for (unsigned int c = 0; c < n_components; ++c)
+                {
+                  local_matrix(i, j) +=
+                      fe_test.shape_value_component(local_indexing_range[i], q_index, c) *
+                      fe_trial.shape_value_component(local_indexing_domain[j], q_index, c) *
+                      fe_test.JxW(q_index);
+                }
+              }
+              // assemble the rhs contribution only on the test space
+              for (unsigned int c = 0; c < n_components; ++c)
+              {
+                // add the contribution to the local vector
+                local_vector(i) +=
+                    function(quad_point, c) *
+                    fe_test.shape_value_component(local_indexing_range[i], q_index, c) *
+                    fe_test.JxW(q_index);
+              }
+            }
+          }  // local assembly
+          matrix.add(global_dofs_range, global_dofs_domain, local_matrix);
+          rhs.add(global_dofs_range, local_vector);
+        }
+      }
+      matrix.compress(dealii::VectorOperation::add);
+      rhs.compress(dealii::VectorOperation::add);
+      // =======================================================================================
+      // solve
+      {
+        dealii::TrilinosWrappers::SolverDirect direct_solver;
+        direct_solver.initialize(matrix);
+        direct_solver.vmult(solution, rhs);
+      }
+
+      // =======================================================================================
+      // Compare to solution:
+
+      // true solution for 4C is given by the function evaluated on all the transformed nodes i.e.
+      // we use a dealii::Vector to store the solution for simplicity of comparison
+      VectorType deal_ii_vector_result;
+      deal_ii_vector_result.reinit(dof_handler.locally_owned_dofs(), comm);
+      dealii::FunctionFromFunctionObjects<dim> result_function(function, 1);
+      dealii::VectorTools::interpolate(isogeometric_mapping.get_mapping_collection()[0],
+          dof_handler, result_function, deal_ii_vector_result);
+      // deal_ii_vector_result.compress(dealii::VectorOperation::insert);
+      // now we can compare the solution with the four_c_vector_result
+      solution -= deal_ii_vector_result;
+      return solution.l2_norm();  // return the error norm
+    }
   };
 
 
@@ -330,9 +510,16 @@ namespace
     AssembleAndSolve<dim> runner{.transform = Transformations<dim>::linear_transform,
         .function = Transformations<dim>::linear_function,
         .fill_function = Transformations<dim>::fill_hex_8<3>};
-    const double error = runner.run(false);
-    EXPECT_NEAR(error, 0.0, 1e-10) << "Error in assembly of volume interpolation with linear "
-                                      "transformation and linear function.";
+    {
+      const double error = runner.run(false);
+      EXPECT_NEAR(error, 0.0, 1e-10) << "Error in assembly of volume interpolation with linear "
+                                        "transformation and linear function.";
+    }
+    {
+      const double error = runner.run_four_c_range(false);
+      EXPECT_NEAR(error, 0.0, 1e-10) << "Error in assembly of volume interpolation with linear "
+                                        "transformation and linear function.";
+    }
   }
 
 

@@ -129,15 +129,24 @@ namespace DealiiWrappers
      * In 4C - lingo this is the dof row map of the discretization and in fact the
      * returned IndexSet is constructed direclty from that object.
      */
-    [[nodiscard]] dealii::IndexSet locally_owned_dofs() const
-    {
-      return dealii::IndexSet(discretization_.dof_row_map()->get_epetra_block_map());
-    }
+    [[nodiscard]] dealii::IndexSet locally_owned_dofs() const;
+
+    /**
+     * Compute a deal.II IndexSet that contains the gids of all dofs that are on the local cells of
+     * the current process. This is a superset of the locally_owned_dofs() as it also includes the
+     * dofs that are owned by other processes but are still needed for the local cells
+     * During a matrix assembly this is the set of all rows for which the local process computes
+     * entries when looping over the local cells.
+     * In deal.II - lingo this set is the set one gets when calling
+     * dealii::DoFTools::extract_locally_relevant_dofs() minus the dofs that are
+     * on ghost cells.
+     */
+    [[nodiscard]] dealii::IndexSet dofs_on_local_cells() const;
 
     /**
      * return the total number of degrees of freedom on all processes handled by this context.
      */
-    unsigned int n_dofs() { return discretization_.dof_row_map()->num_global_elements(); }
+    unsigned int n_dofs() const;
 
 
    private:
@@ -247,6 +256,40 @@ namespace DealiiWrappers
       std::vector<dealii::types::global_dof_index>& dof_indices) const
   {
     Internal::get_dof_indices(get_discretization(), to_element(cell), dof_indices);
+  }
+
+
+  template <int dim, int spacedim>
+  dealii::IndexSet Context<dim, spacedim>::locally_owned_dofs() const
+  {
+    return dealii::IndexSet(discretization_.dof_row_map()->get_epetra_block_map());
+  }
+
+
+  template <int dim, int spacedim>
+  dealii::IndexSet Context<dim, spacedim>::dofs_on_local_cells() const
+  {
+    dealii::IndexSet locally_owned = locally_owned_dofs();
+    std::vector<dealii::types::global_dof_index> dof_indices;
+    std::vector<dealii::types::global_dof_index> dofs_on_ghosts;
+
+    for (const auto& cell : triangulation_.active_cell_iterators())
+    {
+      dof_indices.resize(fe_on_cell(cell).dofs_per_cell);
+      get_dof_indices_four_c_ordering(cell, dof_indices);
+
+      for (const auto dof_index : dof_indices)
+        if (!locally_owned.is_element(dof_index)) dofs_on_ghosts.push_back(dof_index);
+    }
+    std::sort(dofs_on_ghosts.begin(), dofs_on_ghosts.end());
+    locally_owned.add_indices(dofs_on_ghosts.begin(), dofs_on_ghosts.end());
+    locally_owned.compress();
+    return locally_owned;
+  }
+  template <int dim, int spacedim>
+  unsigned int Context<dim, spacedim>::n_dofs() const
+  {
+    return discretization_.dof_row_map()->num_global_elements();
   }
 }  // namespace DealiiWrappers
 
