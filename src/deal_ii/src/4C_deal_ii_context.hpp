@@ -286,6 +286,8 @@ namespace DealiiWrappers
     locally_owned.compress();
     return locally_owned;
   }
+
+
   template <int dim, int spacedim>
   unsigned int Context<dim, spacedim>::n_dofs() const
   {
