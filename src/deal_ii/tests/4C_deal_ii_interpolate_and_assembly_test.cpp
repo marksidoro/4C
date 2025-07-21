@@ -176,8 +176,10 @@ namespace
         dealii::Vector<double> local_vector;
         dealii::FullMatrix<double> local_matrix;
 
+
+        auto max_degree = std::max(deal_fe.degree, context.get_finite_elements().max_degree());
         // Assembly loop:
-        dealii::QGauss<dim> quadrature_gauss(10);
+        dealii::QGauss<dim> quadrature_gauss(max_degree + 1);
         const auto& quadrature = quadrature_gauss;
 
         dealii::hp::QCollection<dim> quadrature_collection(quadrature);
@@ -301,7 +303,6 @@ namespace
         }
       }
       four_c_vector_result.compress(dealii::VectorOperation::insert);
-
       // now we can compare the solution with the four_c_vector_result
       solution -= four_c_vector_result;
       return solution.l2_norm();  // return the error norm
