@@ -229,7 +229,7 @@ namespace DealiiFSI
         deal_ii_discretization.get_fe_collection().max_dofs_per_cell());
 
     std::vector<types::global_dof_index> dof_indices_domain(
-        four_c_discretization.pimpl_->finite_elements.max_dofs_per_cell());
+        four_c_discretization.get_finite_elements().max_dofs_per_cell());
 
 
     for (const auto& interface_pair : matcher.interface_range())
@@ -264,7 +264,7 @@ namespace DealiiFSI
         deal_ii_discretization.get_fe_collection().max_dofs_per_cell());
 
     std::vector<types::global_dof_index> dof_indices_domain(
-        four_c_discretization.pimpl_->finite_elements.max_dofs_per_cell());
+        four_c_discretization.get_finite_elements().max_dofs_per_cell());
 
 
     for (const auto& interface_pair : matcher.interface_range())
@@ -273,7 +273,7 @@ namespace DealiiFSI
       const auto& cell_domain =
           (*interface_pair).second.cell->as_dof_handler_iterator(deal_ii_discretization);
 
-      dof_indices_range.resize(four_c_discretization.fe(cell_range).dofs_per_cell);
+      dof_indices_range.resize(four_c_discretization.fe_on_cell(cell_range).dofs_per_cell);
       dof_indices_domain.resize(cell_domain->get_fe().dofs_per_cell);
 
 

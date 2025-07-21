@@ -19,6 +19,7 @@
 #include "4C_io.hpp"
 #include "4C_io_discretization_visualization_writer_mesh.hpp"
 #include <4C_deal_ii_context.hpp>
+#include <4C_deal_ii_mapping.hpp>
 #include <4C_deal_ii_triangulation.hpp>
 #include <4C_linalg_sparsematrix.hpp>
 
@@ -196,20 +197,7 @@ namespace DealiiFSI
     // build up the transfer objects:
     dealii::Triangulation<dim> solid_tria;
     auto context = DealiiWrappers::create_triangulation(solid_tria, *structdis);
-
-    dealii::DoFHandler<dim> iso_dof_handler;
-    dealii::LinearAlgebra::distributed::Vector<double> iso_vector;
-
-
-    // auto isogeometric_mapping = DealiiWrappers::create_isoparametric_mapping(
-    //       context, *structdis, iso_vector, iso_dof_handler);
-
-
-    // context.pimpl_->mapping_collection.push_back(isogeometric_mapping);
-    context.pimpl_->mapping_collection.push_back(dealii::MappingQ1<dim>());
-
-
-
+    auto mapping = DealiiWrappers::MappingContext<dim>::create_linear_mapping(context);
     InterfaceMatcher<dim> matcher =
         DealiiFSI::make_interface_matcher_across_boundary(solid_tria, fluid_tria, 1e-14);
 
@@ -232,8 +220,8 @@ namespace DealiiFSI
           dealii::update_values | dealii::update_gradients | dealii::update_JxW_values |
               dealii::update_quadrature_points | dealii::update_normal_vectors);
 
-      DealiiWrappers::FEFaceValuesContext<dim> fe_values_solid(context, *structdis,
-          quadrature_collection,
+      DealiiWrappers::FEFaceValuesContext<dim> fe_values_solid(mapping.get_mapping_collection(),
+          context, quadrature_collection,
           dealii::update_values | dealii::update_JxW_values | dealii::update_normal_vectors |
               dealii::update_mapping);
 
@@ -242,7 +230,7 @@ namespace DealiiFSI
       std::vector<dealii::types::global_dof_index> global_dofs_on_cell_solid;
 
       dealii::FullMatrix<double> local_interface_matrix(
-          context.pimpl_->finite_elements.max_dofs_per_cell(),
+          context.get_finite_elements().max_dofs_per_cell(),
           stokes_problem.get_dof_handler().get_fe_collection().max_dofs_per_cell());
 
       for (const auto& interface_pair : matcher.interface_range())
