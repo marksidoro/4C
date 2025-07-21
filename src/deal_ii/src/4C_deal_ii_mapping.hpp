@@ -231,6 +231,8 @@ namespace DealiiWrappers
           }
         }
       }
+      // exchange data
+      position_vector.update_ghost_values();
       const dealii::ComponentMask mask(spacedim, true);
       return dealii::MappingFEField<dim, spacedim, VectorType>(
           iso_dof_handler, position_vector, mask);

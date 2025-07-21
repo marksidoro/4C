@@ -17,12 +17,20 @@
 #include "4C_fem_discretization.hpp"
 #include "4C_fem_dofset.hpp"
 
+#include <deal.II/base/index_set.h>
+#include <deal.II/base/mpi.h>
+#include <deal.II/distributed/fully_distributed_tria.h>
+#include <deal.II/dofs/dof_handler.h>
 #include <deal.II/lac/la_parallel_vector.h>
 #include <deal.II/lac/precondition.h>
 #include <deal.II/lac/sparse_direct.h>
+#include <deal.II/lac/trilinos_solver.h>
+#include <deal.II/lac/trilinos_sparse_matrix.h>
+#include <deal.II/lac/trilinos_sparsity_pattern.h>
 #include <deal.II/numerics/vector_tools.h>
 #include <deal.II/numerics/vector_tools_interpolate.templates.h>
 #include <Epetra_SerialComm.h>
+
 
 namespace
 {
@@ -101,8 +109,8 @@ namespace
   template <int dim>
   struct AssembleAndSolve
   {
-    using VectorType = dealii::LinearAlgebra::distributed::Vector<double>;
-
+    // using VectorType = dealii::LinearAlgebra::distributed::Vector<double>;
+    using VectorType = dealii::TrilinosWrappers::MPI::Vector;
 
     std::function<dealii::Point<dim>(const dealii::Point<dim>&)> transform;
     std::function<double(const dealii::Point<dim>&, unsigned int)> function;
@@ -113,16 +121,20 @@ namespace
 
     double run(bool vector_valued = false)
     {
+      const auto comm = MPI_COMM_WORLD;
       const unsigned int n_components = vector_valued ? dim : 1;
 
-      dealii::Triangulation<dim> tria;
-      const auto comm = MPI_COMM_WORLD;
-      Core::FE::Discretization discret{"one_cell", comm, dim};
+      dealii::parallel::fullydistributed::Triangulation<dim> tria(comm);
 
+      Core::FE::Discretization discret{"one_cell", comm, dim};
       fill_function(discret, vector_valued, transform);
 
       DealiiWrappers::Context<dim> context = DealiiWrappers::create_triangulation(tria, discret);
+      auto local_four_c_dofs = context.locally_owned_dofs();
+
+
       auto isogeometric_mapping =
+          // DealiiWrappers::MappingContext<dim>::create_linear_mapping(context);
           DealiiWrappers::MappingContext<dim>::create_isoparametric_mapping(context);
       dealii::DoFHandler<dim> dof_handler{tria};
       const auto& deal_fe = context.get_finite_elements()[0];
@@ -133,16 +145,30 @@ namespace
           << "The number of dofs in the deal.II DoFHandler does not match the number of dofs in "
              "the ";
 
-
-      dealii::DynamicSparsityPattern dsp(dof_handler.n_dofs());
+      auto local_relevant_dofs = dealii::DoFTools::extract_locally_relevant_dofs(dof_handler);
+      dealii::DynamicSparsityPattern dsp(
+          dof_handler.n_dofs(), dof_handler.n_dofs(), local_relevant_dofs);
       DealiiWrappers::make_context_sparsity_pattern<false>(context, dof_handler, dsp);
-      dealii::SparsityPattern sparsity_pattern;
-      sparsity_pattern.copy_from(dsp);
-      dealii::SparseMatrix<double> matrix;
-      matrix.reinit(sparsity_pattern);
+      dealii::SparsityTools::distribute_sparsity_pattern(
+          dsp, dof_handler.locally_owned_dofs(), comm, local_relevant_dofs);
 
-      dealii::Vector<double> rhs, solution;
-      rhs.reinit(dof_handler.n_dofs());
+
+      // dealii::TrilinosWrappers::SparsityPattern sparsity_pattern;
+      // sparsity_pattern.reinit(dof_handler.locally_owned_dofs(), local_four_c_dofs, dsp, comm,
+      // true); sparsity_pattern.compress();
+
+
+      dealii::TrilinosWrappers::SparseMatrix matrix;
+      matrix.reinit(dof_handler.locally_owned_dofs(), local_four_c_dofs, dsp, comm, true);
+
+
+
+      auto locally_relevant_dofs = dealii::DoFTools::extract_locally_relevant_dofs(dof_handler);
+      VectorType rhs, solution;
+      rhs.reinit(dof_handler.locally_owned_dofs(), comm);
+      // rhs.reinit(dof_handler.locally_owned_dofs(), locally_relevant_dofs, comm);
+      solution.reinit(local_four_c_dofs, comm);
+
 
       // =======================================================================================
       // Assembly of the matrix and rhs vector
@@ -171,6 +197,8 @@ namespace
 
         for (const auto& cell : dof_handler.active_cell_iterators())
         {
+          if (not cell->is_locally_owned()) continue;
+
           fe_values_test.reinit(cell);
           fe_values_context.reinit(cell);
 
@@ -239,13 +267,13 @@ namespace
           rhs.add(global_dofs_on_cell_deal_ii, local_vector);
         }
       }
-
+      matrix.compress(dealii::VectorOperation::add);
+      rhs.compress(dealii::VectorOperation::add);
       // =======================================================================================
       // solve
       {
-        dealii::SparseDirectUMFPACK direct_solver;
+        dealii::TrilinosWrappers::SolverDirect direct_solver;
         direct_solver.initialize(matrix);
-        solution.reinit(rhs);
         direct_solver.vmult(solution, rhs);
       }
 
@@ -254,9 +282,9 @@ namespace
 
       // true solution for 4C is given by the function evaluated on all the transformed nodes i.e.
       // we use a dealii::Vector to store the solution for simplicity of comparison
-      dealii::Vector<double> four_c_vector_result;
-      four_c_vector_result.reinit(discret.dof_row_map()->num_global_elements());
-      for (int i = 0; i < discret.num_global_elements(); ++i)
+      VectorType four_c_vector_result;
+      four_c_vector_result.reinit(local_four_c_dofs, comm);
+      for (int i = 0; i < discret.num_my_row_elements(); ++i)
       {
         const auto* element = discret.l_row_element(i);
         Core::Elements::LocationArray location_array(context.get_discretization().num_dof_sets());
@@ -272,6 +300,8 @@ namespace
           }
         }
       }
+      four_c_vector_result.compress(dealii::VectorOperation::insert);
+
       // now we can compare the solution with the four_c_vector_result
       solution -= four_c_vector_result;
       return solution.l2_norm();  // return the error norm

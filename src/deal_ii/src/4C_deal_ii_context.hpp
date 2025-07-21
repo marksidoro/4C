@@ -123,6 +123,22 @@ namespace DealiiWrappers
         const typename dealii::Triangulation<dim, spacedim>::cell_iterator& cell,
         std::vector<dealii::types::global_dof_index>& dof_indices) const;
 
+    /**
+     * Get the locally owned dofs of the discretization in a deal.II IndexSet.
+     * This is the set of dofs that are directly owned and handled by the current MPI process.
+     * In 4C - lingo this is the dof row map of the discretization and in fact the
+     * returned IndexSet is constructed direclty from that object.
+     */
+    [[nodiscard]] dealii::IndexSet locally_owned_dofs() const
+    {
+      return dealii::IndexSet(discretization_.dof_row_map()->get_epetra_block_map());
+    }
+
+    /**
+     * return the total number of degrees of freedom on all processes handled by this context.
+     */
+    unsigned int n_dofs() { return discretization_.dof_row_map()->num_global_elements(); }
+
 
    private:
     /**
