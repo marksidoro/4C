@@ -14,14 +14,14 @@ cmake_minimum_required(VERSION 3.30)
 
 # try to prevent modification of source directory
 # note: some files may still be written before CMake can abort and need to be removed manually
-if(${CMAKE_CURRENT_SOURCE_DIR} STREQUAL ${CMAKE_CURRENT_BINARY_DIR})
-  message(
-    FATAL_ERROR
-      "In-source build not allowed. "
-      "Please create a new directory, preferably next to the source directory, and run CMake from there. "
-      "You may want to remove CMakeCache.txt and CMakeFiles/ which were created in the source directory."
+if (${CMAKE_CURRENT_SOURCE_DIR} STREQUAL ${CMAKE_CURRENT_BINARY_DIR})
+    message(
+            FATAL_ERROR
+            "In-source build not allowed. "
+            "Please create a new directory, preferably next to the source directory, and run CMake from there. "
+            "You may want to remove CMakeCache.txt and CMakeFiles/ which were created in the source directory."
     )
-endif()
+endif ()
 
 project(4C CXX C)
 
@@ -52,17 +52,17 @@ set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
 # where PATCH is optional and implicitly 0 if not present.
 file(STRINGS "${PROJECT_SOURCE_DIR}/VERSION" FOUR_C_VERSION_FULL LIMIT_COUNT 1)
 string(
-  REGEX MATCH
+        REGEX MATCH
         "([0-9][0-9][0-9][0-9])\.([0-9]+)\.([0-9]+)(-([a-z0-9]+))?"
         _dummy
         ${FOUR_C_VERSION_FULL}
-  )
-if(NOT _dummy)
-  message(
-    FATAL_ERROR
-      "The version string ${FOUR_C_VERSION_FULL} does not match the expected format YYYY.MINOR.PATCH[-MODIFIER]."
+)
+if (NOT _dummy)
+    message(
+            FATAL_ERROR
+            "The version string ${FOUR_C_VERSION_FULL} does not match the expected format YYYY.MINOR.PATCH[-MODIFIER]."
     )
-endif()
+endif ()
 set(FOUR_C_VERSION_MAJOR ${CMAKE_MATCH_1})
 set(FOUR_C_VERSION_MINOR ${CMAKE_MATCH_2})
 set(FOUR_C_VERSION_PATCH ${CMAKE_MATCH_3})
@@ -71,17 +71,17 @@ message(STATUS "Configuring 4C version ${FOUR_C_VERSION_FULL}")
 
 # Assert a valid build configuration
 set(_allowed_build_types "DEBUG" "RELEASE" "RELWITHDEBINFO")
-if(NOT CMAKE_BUILD_TYPE)
-  message(FATAL_ERROR "Choose a build type. Options are: ${_allowed_build_types}.")
-else()
-  string(TOUPPER ${CMAKE_BUILD_TYPE} FOUR_C_BUILD_TYPE_UPPER)
-  if(NOT ${FOUR_C_BUILD_TYPE_UPPER} IN_LIST _allowed_build_types)
-    message(
-      FATAL_ERROR "Invalid build type ${CMAKE_BUILD_TYPE}. Options are: ${_allowed_build_types}."
-      )
-  endif()
-  message(STATUS "Configuring for build type ${CMAKE_BUILD_TYPE}")
-endif()
+if (NOT CMAKE_BUILD_TYPE)
+    message(FATAL_ERROR "Choose a build type. Options are: ${_allowed_build_types}.")
+else ()
+    string(TOUPPER ${CMAKE_BUILD_TYPE} FOUR_C_BUILD_TYPE_UPPER)
+    if (NOT ${FOUR_C_BUILD_TYPE_UPPER} IN_LIST _allowed_build_types)
+        message(
+                FATAL_ERROR "Invalid build type ${CMAKE_BUILD_TYPE}. Options are: ${_allowed_build_types}."
+        )
+    endif ()
+    message(STATUS "Configuring for build type ${CMAKE_BUILD_TYPE}")
+endif ()
 
 # specify where our own cmake modules are located
 list(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake/modules)
@@ -94,17 +94,17 @@ include(FetchContent)
 
 # Include our own functions and macros
 file(GLOB _function_files CONFIGURE_DEPENDS "cmake/functions/*.cmake")
-foreach(_file ${_function_files})
-  message(VERBOSE "Include ${_file}")
-  include(${_file})
-endforeach()
+foreach (_file ${_function_files})
+    message(VERBOSE "Include ${_file}")
+    include(${_file})
+endforeach ()
 
 # Perform basic checks
 file(GLOB _checks CONFIGURE_DEPENDS "cmake/checks/*.cmake")
-foreach(_file ${_checks})
-  message(VERBOSE "Include ${_file}")
-  include(${_file})
-endforeach()
+foreach (_file ${_checks})
+    message(VERBOSE "Include ${_file}")
+    include(${_file})
+endforeach ()
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
@@ -121,6 +121,7 @@ four_c_configure_dependency(MPI DEFAULT ON)
 four_c_configure_dependency(Qhull DEFAULT ON)
 four_c_configure_dependency(Trilinos DEFAULT ON)
 four_c_configure_dependency(deal.II DEFAULT OFF)
+four_c_configure_dependency(MMG DEFAULT OFF)
 four_c_configure_dependency(Boost DEFAULT ON)
 four_c_configure_dependency(ArborX DEFAULT OFF)
 four_c_configure_dependency(FFTW DEFAULT ON)
@@ -139,31 +140,31 @@ enable_testing()
 # NOTE: --mca orte_tmpdir_base [...] can be removed for openmpi >= 4.1.1 according to
 # https://github.com/open-mpi/ompi/issues/8510#issuecomment-1329297350
 four_c_process_cache_variable(
-  FOUR_C_MPIEXEC_ARGS_FOR_TESTING
-  TYPE
-  STRING
-  DESCRIPTION
-  "Arguments to pass to mpiexec for testing."
-  DEFAULT
-  "--bind-to none --use-hwthread-cpus --mca orte_tmpdir_base ${PROJECT_BINARY_DIR}/tmp"
-  )
+        FOUR_C_MPIEXEC_ARGS_FOR_TESTING
+        TYPE
+        STRING
+        DESCRIPTION
+        "Arguments to pass to mpiexec for testing."
+        DEFAULT
+        "--bind-to none --use-hwthread-cpus --mca orte_tmpdir_base ${PROJECT_BINARY_DIR}/tmp"
+)
 # We might need to add more arguments. Initialize with the user input.
 set(_mpiexec_all_args_for_testing ${FOUR_C_MPIEXEC_ARGS_FOR_TESTING})
 
-if(FOUR_C_ENABLE_ADDRESS_SANITIZER)
-  # Do not detect leaks, we only care about UB inducing memory issues
-  string(APPEND _mpiexec_all_args_for_testing " -x LSAN_OPTIONS=detect_leaks=0")
-  set(FOUR_C_ENABLE_ADDRESS_SANITIZER_TEST_OPTIONS "LSAN_OPTIONS=detect_leaks=0")
-endif()
+if (FOUR_C_ENABLE_ADDRESS_SANITIZER)
+    # Do not detect leaks, we only care about UB inducing memory issues
+    string(APPEND _mpiexec_all_args_for_testing " -x LSAN_OPTIONS=detect_leaks=0")
+    set(FOUR_C_ENABLE_ADDRESS_SANITIZER_TEST_OPTIONS "LSAN_OPTIONS=detect_leaks=0")
+endif ()
 
 set(FOUR_C_EXECUTABLE_NAME 4C)
 set(FULL_TARGETS
-    post_processor
-    post_monitor
-    pre_locsys
-    create_rtd
-    cut_test
-    )
+        post_processor
+        post_monitor
+        pre_locsys
+        create_rtd
+        cut_test
+)
 
 add_custom_target(full DEPENDS ${FOUR_C_EXECUTABLE_NAME} ${FULL_TARGETS})
 
@@ -175,13 +176,13 @@ add_library(${FOUR_C_LIBRARY_NAME})
 # Remove the CMake generated prefix "lib" because we already added it manually, to have a distinct target name.
 set_target_properties(${FOUR_C_LIBRARY_NAME} PROPERTIES PREFIX "")
 target_link_libraries(${FOUR_C_LIBRARY_NAME} PRIVATE four_c_private_compile_interface)
-if(NOT FOUR_C_BUILD_SHARED_LIBS)
-  install(
-    TARGETS four_c_private_compile_interface
-    EXPORT 4CTargets
-    FILE_SET HEADERS
+if (NOT FOUR_C_BUILD_SHARED_LIBS)
+    install(
+            TARGETS four_c_private_compile_interface
+            EXPORT 4CTargets
+            FILE_SET HEADERS
     )
-endif()
+endif ()
 
 # Set up Python build/test venv
 include(cmake/python/set_up_python.cmake)
