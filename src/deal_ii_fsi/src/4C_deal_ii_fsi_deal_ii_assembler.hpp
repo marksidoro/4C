@@ -1,5 +1,12 @@
-#ifndef INC_4C_DEAL_II_FSI_DEAL_II_ASSEMBLER_HPP
-#define INC_4C_DEAL_II_FSI_DEAL_II_ASSEMBLER_HPP
+// This file is part of 4C multiphysics licensed under the
+// GNU Lesser General Public License v3.0 or later.
+//
+// See the LICENSE.md file in the top-level for license information.
+//
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
+#ifndef FOUR_C_DEAL_II_FSI_DEAL_II_ASSEMBLER_HPP
+#define FOUR_C_DEAL_II_FSI_DEAL_II_ASSEMBLER_HPP
 
 
 
@@ -8,13 +15,13 @@
 #include "4C_adapter_str_factory.hpp"
 #include "4C_adapter_str_structure.hpp"
 #include "4C_adapter_str_structure_new.hpp"
+#include "4C_deal_ii_context.hpp"
+#include "4C_deal_ii_triangulation.hpp"
 #include "4C_fem_condition_periodic.hpp"
 #include "4C_fem_discretization.hpp"
 #include "4C_global_data.hpp"
 #include "4C_io.hpp"
-#include <4C_deal_ii_context.hpp>
-#include <4C_deal_ii_triangulation.hpp>
-#include <4C_linalg_sparsematrix.hpp>
+#include "4C_linalg_sparsematrix.hpp"
 
 #include <deal.II/dofs/dof_tools.h>
 #include <deal.II/fe/fe_q.h>
@@ -209,9 +216,6 @@ namespace DealiiFSI
       static constexpr unsigned int interface_boundary_id = 42;
       static constexpr unsigned int top_boundary_id = 1;
       static constexpr unsigned int sides_boundary_id = 2;
-
-
-
       const double viscosity = 2.0;                     // viscosity of the fluid
       static constexpr unsigned int stokes_degree = 1;  // degree of the stokes finite element
 
