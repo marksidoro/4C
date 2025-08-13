@@ -8,22 +8,22 @@
 
 #include "4C_config.hpp"
 
-#include "4C_deal_ii_fsi_main.hpp>
+#include "4C_deal_ii_fsi_main.hpp"
 
-#include "4C_adapter_str_factory.hpp>
-#include "4C_adapter_str_structure.hpp>
-#include "4C_adapter_str_structure_new.hpp>
-#include "4C_deal_ii_context.hpp>
-#include "4C_deal_ii_fsi_deal_ii_assembler.hpp>
-#include "4C_deal_ii_fsi_tools.hpp>
-#include "4C_deal_ii_mapping.hpp>
-#include "4C_deal_ii_triangulation.hpp>
-#include "4C_fem_condition_periodic.hpp>
-#include "4C_fem_discretization.hpp>
-#include "4C_global_data.hpp>
-#include "4C_io.hpp>
-#include "4C_io_discretization_visualization_writer_mesh.hpp>
-#include "4C_linalg_sparsematrix.hpp>
+#include "4C_adapter_str_factory.hpp"
+#include "4C_adapter_str_structure.hpp"
+#include "4C_adapter_str_structure_new.hpp"
+#include "4C_deal_ii_context.hpp"
+#include "4C_deal_ii_fsi_deal_ii_assembler.hpp"
+#include "4C_deal_ii_fsi_tools.hpp"
+#include "4C_deal_ii_mapping.hpp"
+#include "4C_deal_ii_triangulation.hpp"
+#include "4C_fem_condition_periodic.hpp"
+#include "4C_fem_discretization.hpp"
+#include "4C_global_data.hpp"
+#include "4C_io.hpp"
+#include "4C_io_discretization_visualization_writer_mesh.hpp"
+#include "4C_linalg_sparsematrix.hpp"
 #include "4C_utils_exceptions.hpp"
 
 #include <deal.II/fe/fe_q.h>
@@ -38,12 +38,14 @@
 #include <deal.II/lac/trilinos_sparse_matrix.h>
 #include <deal.II/multigrid/mg_smoother.h>
 #include <deal.II/multigrid/multigrid.h>
+#include <deal.II/multigrid/multigrid.templates.h>
 #include <deal.II/numerics/data_out.h>
 #include <MMG/Fluid/Details/dg_fluid_monolithic.hpp>
 #include <MMG/Fluid/geometry/base_geometry_setups.hpp>
 #include <MMG/Fluid/solver/block_schwarz_pc.hpp>
 #include <MMG/Fluid/solver/mg_hierarchy.hpp>
 #include <MMG/Multigrid/Block/coarse_grid/direct_solver.hpp>
+#include <MMG/Multigrid/Block/coarse_grid/no_solver.hpp>
 #include <MMG/Multigrid/Block/operator/operator_base.hpp>
 #include <MMG/Multigrid/Block/smoother/block_jacobi.hpp>
 #include <MMG/Multigrid/Block/transfer/transfer_base.hpp>
@@ -195,10 +197,14 @@ namespace DealiiFSI
     deal_solid_matrix.reinit(*matrix->epetra_matrix());
     mmg_solid_matrix.copy_from(deal_solid_matrix);
 
+    std::cout << mmg_solid_matrix.n_col_blocks() << " " << mmg_solid_matrix.n_row_blocks()
+              << std::endl;
+
+    std::cout << "Solid matrix size: " << mmg_solid_matrix.trilinos_ref().getGlobalNumRows()
+              << " x " << mmg_solid_matrix.trilinos_ref().getGlobalNumCols() << std::endl;
+
     MMG::MB::MueLuMultigrid<number> mue_lu_multigrid;
     mue_lu_multigrid.reinit(mmg_solid_matrix);
-
-
 
     auto rhs_original = structadapter->rhs();
     auto rhs = std::make_shared<Core::LinAlg::Vector<double>>(*rhs_original);
@@ -296,7 +302,7 @@ namespace DealiiFSI
         MMG::BlockVectorType<number>>;
 
 
-    auto mg_smoother = std::shared_ptr<MGSmoother>();
+    auto mg_smoother = std::make_shared<MGSmoother>();
     mg_smoother->initialize(mg_hierarchy.get_operators(), mg_smoother_data);
     mg_hierarchy.pre_smoother = mg_smoother;
     mg_hierarchy.post_smoother = mg_smoother;
@@ -310,15 +316,15 @@ namespace DealiiFSI
     InterfaceMatcher<dim> matcher =
         DealiiFSI::make_interface_matcher_across_boundary(solid_tria, fine_fluid_tria, 1e-14);
 
-    const auto n_dofs_vel = mg_hierarchy.get_dof_handler_velocity(min_level, true).n_dofs();
-    const auto n_dofs_pres = mg_hierarchy.get_dof_handler_velocity(min_level, false).n_dofs();
+    const auto n_dofs_vel = mg_hierarchy.get_dof_handler_velocity(max_level, true).n_dofs();
+    const auto n_dofs_pres = mg_hierarchy.get_dof_handler_velocity(max_level, false).n_dofs();
 
     dealii::DynamicSparsityPattern dsp_vel(rhs->global_length(), n_dofs_vel);
     make_interface_sparsity_pattern(
-        matcher, context, mg_hierarchy.get_dof_handler_velocity(min_level, true), dsp_vel);
+        matcher, context, mg_hierarchy.get_dof_handler_velocity(max_level, true), dsp_vel);
     dealii::DynamicSparsityPattern dsp_pres(rhs->global_length(), n_dofs_pres);
     make_interface_sparsity_pattern(
-        matcher, context, mg_hierarchy.get_dof_handler_velocity(min_level, false), dsp_pres);
+        matcher, context, mg_hierarchy.get_dof_handler_velocity(max_level, false), dsp_pres);
     dealii::TrilinosWrappers::SparseMatrix interface_matrix_vel, interface_matrix_pres;
     interface_matrix_vel.reinit(dsp_vel);
     interface_matrix_pres.reinit(dsp_pres);
@@ -412,86 +418,114 @@ namespace DealiiFSI
     };
 
     assemble_interface(
-        interface_matrix_vel, mg_hierarchy.get_dof_handler_velocity(min_level, true));
+        interface_matrix_vel, mg_hierarchy.get_dof_handler_velocity(max_level, true));
 
     assemble_interface(
-        interface_matrix_pres, mg_hierarchy.get_dof_handler_velocity(min_level, false));
+        interface_matrix_pres, mg_hierarchy.get_dof_handler_velocity(max_level, false));
 
     MMG::TRILINOS::SparseMatrixInterface single_matrix_vel, single_matrix_pres;
     single_matrix_vel.copy_from(interface_matrix_vel);
     single_matrix_pres.copy_from(interface_matrix_pres);
-    MMG::TRILINOS::SparseMatrixInterface interface_matrix(2, 1);
+    MMG::TRILINOS::SparseMatrixInterface interface_matrix(1, 2);
     interface_matrix.trilinos_rcp(0, 0) = single_matrix_vel.trilinos_rcp();
-    interface_matrix.trilinos_rcp(1, 0) = single_matrix_pres.trilinos_rcp();
+    interface_matrix.trilinos_rcp(0, 1) = single_matrix_pres.trilinos_rcp();
 
 
     /// ---------------------------------------------------------------------------------------
     auto mg_solid_operator = mue_lu_multigrid.get_mg_operator();
-    MMG::TOOLS::LevelMap level_map({{mg_hierarchy.min_level(), mg_hierarchy.min_level()},
+    MMG::TOOLS::LevelMap level_map({{mg_hierarchy.min_level(), mg_hierarchy.max_level()},
         {mue_lu_multigrid.min_level(), mue_lu_multigrid.max_level()}});
 
     MMG::BlockMGMatrix<MMG::BlockVectorType<number>, MMG::VectorType<number>> mg_block_matrix(
         mg_hierarchy.get_mg_operator(), mg_solid_operator, level_map);
 
+    auto mg_solid_fluid_coupling = std::make_shared<
+        MMG::MGCouplingMatrix<MMG::VectorType<number>, MMG::BlockVectorType<number>>>(
+        *mue_lu_multigrid.get_mg_transfer(), level_map.get_block(1), interface_matrix,
+        level_map.get_block(0), *mg_hierarchy.get_mg_transfer());
+
     auto mg_fluid_solid_coupling = std::make_shared<
-        MMG::MGCouplingMatrix<MMG::BlockVectorType<number>, MMG::VectorType<number>>>(
-        *mg_hierarchy.get_mg_transfer(), level_map.get_block(0), interface_matrix,
-        level_map.get_block(1), *mue_lu_multigrid.get_mg_transfer());
+        MMG::MGCouplingZeroBlock<MMG::BlockVectorType<number>, MMG::VectorType<number>>>(
+        *mg_hierarchy.get_mg_transfer(), level_map.get_block(0), level_map.get_block(1),
+        *mue_lu_multigrid.get_mg_transfer());
 
-
+    mg_block_matrix.set_coupling_operator<1, 0>(mg_solid_fluid_coupling);
     mg_block_matrix.set_coupling_operator<0, 1>(mg_fluid_solid_coupling);
+
     MMG::BlockMGTransfer<MMG::BlockVectorType<number>, MMG::VectorType<number>> mg_block_transfer(
         level_map);
     mg_block_transfer.reinit_block<0>(0, mg_hierarchy.get_mg_transfer());
     mg_block_transfer.reinit_block<1>(1, mue_lu_multigrid.get_mg_transfer());
 
+
     number smoother_dumping = 0.8;
     MMG::BlockJacobiSmoother<MMG::BlockVectorType<number>, MMG::VectorType<number>>
         mg_block_smoother_pre(mg_block_matrix, level_map, {smoother_dumping});
+    mg_block_smoother_pre.reinit_block(0, mg_hierarchy.get_mg_pre_smoother());
+    mg_block_smoother_pre.reinit_block(1, mue_lu_multigrid.get_mg_pre_smoother());
 
     const auto& mg_block_smoother_post = mg_block_smoother_pre;
 
 
     // build the coarse matrix...
-    MMG::BlockCoarseGridDirectSolve<MMG::BlockVectorType<number>, MMG::VectorType<number>>*
+    // MMG::BlockCoarseGridDirectSolve<MMG::BlockVectorType<number>, MMG::VectorType<number>>
+    //     mg_block_coarse_grid;
+
+    MMG::BlockCoarseGridNoSolve<MMG::BlockVectorType<number>, MMG::VectorType<number>>
         mg_block_coarse_grid;
 
+    MMG::MultiBlockVector<MMG::BlockVectorType<number>, MMG::VectorType<number>> rhs_coupled,
+        solution_coupled;
 
-    dealii::Multigrid multigrid(mg_block_matrix, *mg_block_coarse_grid, mg_block_transfer,
+    MMG::TOOLS::initialize_dof_vector(
+        max_level, level_map, rhs_coupled, mg_hierarchy, mue_lu_multigrid);
+    MMG::TOOLS::initialize_dof_vector(
+        max_level, level_map, solution_coupled, mg_hierarchy, mue_lu_multigrid);
+
+    dealii::Multigrid multigrid(mg_block_matrix, mg_block_coarse_grid, mg_block_transfer,
         mg_block_smoother_pre, mg_block_smoother_post);
 
-    /*
+
     for (unsigned int level = level_map.min_level(); level <= level_map.max_level(); ++level)
     {
-      mg_block_matrix.initialize_dof_vector(level, multigrid.defect[level]);
+      MMG::TOOLS::initialize_dof_vector(
+          level, level_map, multigrid.defect[level], mg_hierarchy, mue_lu_multigrid);
     }
-    */
 
-    /*
+
+
     dealii::LinearOperator<
         MMG::MultiBlockVector<MMG::BlockVectorType<number>, MMG::VectorType<number>>>
         mg_pc;
-    mg_pc.vmult = [&multigrid](auto& dst, const auto& src)
+    mg_pc.vmult = [&](auto& dst, const auto& src)
     {
-      multigrid.defect = src;
+      multigrid.defect[max_level] = src;
+      for (unsigned int level = level_map.min_level(); level < level_map.max_level(); ++level)
+      {
+        multigrid.defect[level] = 0;
+      }
       multigrid.cycle();
-      dst = multigrid.solution;
+      dst = multigrid.solution[max_level];
     };
 
     dealii::LinearOperator<
         MMG::MultiBlockVector<MMG::BlockVectorType<number>, MMG::VectorType<number>>>
         fine_operator;
-    fine_operator.vmult = [&mg_block_matrix](auto& dst, const auto& src)
+    fine_operator.vmult = [&](auto& dst, const auto& src)
     { mg_block_matrix.vmult(max_level, dst, src); };
 
+    mg_block_matrix.vmult(max_level, solution_coupled, rhs_coupled);
+    mg_pc.vmult(solution_coupled, rhs_coupled);
+
+
+    /*
     dealii::SolverControl solver_control(200, 1e-6);
     dealii::SolverGMRES<
         MMG::MultiBlockVector<MMG::BlockVectorType<number>, MMG::VectorType<number>>>
         solver(solver_control);
-        */
 
-    // solver.solve(fine_operator, )
-
+    solver.solve(fine_operator, solution_coupled, rhs_coupled, mg_pc);
+    */
 
 
     /*
