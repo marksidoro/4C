@@ -20,6 +20,7 @@
 #include "4C_deal_ii_triangulation.hpp"
 #include "4C_fem_condition_periodic.hpp"
 #include "4C_fem_discretization.hpp"
+#include "4C_fem_discretization_nullspace.hpp"
 #include "4C_global_data.hpp"
 #include "4C_io.hpp"
 #include "4C_io_discretization_visualization_writer_mesh.hpp"
@@ -30,6 +31,7 @@
 #include <deal.II/fe/fe_values.h>
 #include <deal.II/lac/block_vector.h>
 #include <deal.II/lac/precondition.h>
+#include <deal.II/lac/solver_bicgstab.h>
 #include <deal.II/lac/solver_gmres.h>
 #include <deal.II/lac/sparse_direct.h>
 #include <deal.II/lac/trilinos_block_sparse_matrix.h>
@@ -146,6 +148,53 @@ namespace DealiiFSI
 
 
 
+  template <int dim, typename number>
+  void output_results(const std::vector<const dealii::DoFHandler<dim>*>& dof_handler,
+      const MMG::BlockVectorType<number>& solution, unsigned int refinement_cycle,
+      std::string filename = "solution")
+  {
+    using namespace dealii;
+    {
+      DataOut<dim> data_out;
+      std::vector<std::string> solution_names(dim, "velocity");
+      std::vector<DataComponentInterpretation::DataComponentInterpretation>
+          data_component_interpretation(
+              dim, DataComponentInterpretation::component_is_part_of_vector);
+      data_out.attach_dof_handler(*dof_handler[0]);
+      data_out.add_data_vector(solution.block(0), solution_names, DataOut<dim>::type_dof_data,
+          data_component_interpretation);
+      data_out.build_patches(1);
+      data_out.write_vtu_with_pvtu_record(
+          "./", "velocity_" + filename, refinement_cycle, MPI_COMM_WORLD);
+    }
+
+    {
+      DataOut<dim> data_out;
+      std::vector<std::string> solution_names(1, "pressure");
+      std::vector<DataComponentInterpretation::DataComponentInterpretation>
+          data_component_interpretation;
+      data_component_interpretation.push_back(DataComponentInterpretation::component_is_scalar);
+      data_out.attach_dof_handler(*dof_handler[1]);
+      data_out.add_data_vector(solution.block(1), solution_names, DataOut<dim>::type_dof_data,
+          data_component_interpretation);
+      data_out.build_patches(1);
+      data_out.write_vtu_with_pvtu_record(
+          "./", "pressure_" + filename, refinement_cycle, MPI_COMM_WORLD);
+    }
+  }
+
+
+  void output_results(const Core::LinAlg::Vector<double>& solution_solid,
+      Core::IO::DiscretizationVisualizationWriterMesh& writer, unsigned int index,
+      std::string field_name = "solution")
+  {
+    writer.append_result_data_vector_with_context(solution_solid, Core::IO::OutputEntity::dof,
+        {field_name + "_x", field_name + "_y", std::nullopt});
+    writer.write_to_disk(0.0, index);
+  }
+
+
+
   void run()
   {
     constexpr int dim = 2;
@@ -190,6 +239,11 @@ namespace DealiiFSI
 
     structadapter->integrate();
 
+    auto nullspace = Core::FE::compute_null_space(*structdis, 2, 3, *structdis->dof_col_map());
+    auto ns_eptra_rcp = Teuchos::rcpFromRef(nullspace->get_epetra_multi_vector());
+    Teuchos::RCP<MMG::TRILINOS::TYPES::MultiVector> nullspace_mv =
+        Teuchos::RCP(new MMG::TRILINOS::TYPES::internal::Xpetra_EpertaMultiVector(ns_eptra_rcp));
+
     auto matrix = structadapter->system_matrix();
 
     MMG::TRILINOS::SparseMatrixInterface mmg_solid_matrix;
@@ -204,7 +258,18 @@ namespace DealiiFSI
               << " x " << mmg_solid_matrix.trilinos_ref().getGlobalNumCols() << std::endl;
 
     MMG::MB::MueLuMultigrid<number> mue_lu_multigrid;
-    mue_lu_multigrid.reinit(mmg_solid_matrix);
+    MMG::MB::MueLuMultigrid<number>::AdditionalData mue_lu_data;
+    mue_lu_data.block_parameters[0].transfer_type =
+        MMG::MB::MueLuMultigrid<number>::AdditionalData::TransferType::SmoothedAggregation;
+    mue_lu_data.block_parameters[0].pre_smoother =
+        MMG::MB::MueLuMultigrid<number>::AdditionalData::SmootherType::ILU;
+    mue_lu_data.block_parameters[0].post_smoother =
+        MMG::MB::MueLuMultigrid<number>::AdditionalData::SmootherType::ILU;
+    mue_lu_data.block_parameters[0].nullspace = nullspace_mv;
+
+
+
+    mue_lu_multigrid.reinit(mmg_solid_matrix, mue_lu_data);
 
     auto rhs_original = structadapter->rhs();
     auto rhs = std::make_shared<Core::LinAlg::Vector<double>>(*rhs_original);
@@ -406,7 +471,7 @@ namespace DealiiFSI
                 solid_value_vector[c] =
                     phi_solid.shape_value_component(local_indexing[i], q_index, c);
               }
-              local_interface_matrix(i, j) -= (2 * viscosity * (stokes_sym_grad * normal_vector) -
+              local_interface_matrix(i, j) -= (2.0 * viscosity * (stokes_sym_grad * normal_vector) +
                                                   stokes_pressure * normal_vector) *
                                               solid_value_vector * phi_stokes.JxW(q_index);
             }
@@ -433,8 +498,10 @@ namespace DealiiFSI
 
     /// ---------------------------------------------------------------------------------------
     auto mg_solid_operator = mue_lu_multigrid.get_mg_operator();
-    MMG::TOOLS::LevelMap level_map({{mg_hierarchy.min_level(), mg_hierarchy.max_level()},
-        {mue_lu_multigrid.min_level(), mue_lu_multigrid.max_level()}});
+    MMG::TOOLS::LevelMap level_map(
+        {{mg_hierarchy.min_level(), mg_hierarchy.max_level()},
+            {mue_lu_multigrid.min_level(), mue_lu_multigrid.max_level()}},
+        MMG::TOOLS::LevelMap::LevelMapType::AppendFine);
 
     MMG::BlockMGMatrix<MMG::BlockVectorType<number>, MMG::VectorType<number>> mg_block_matrix(
         mg_hierarchy.get_mg_operator(), mg_solid_operator, level_map);
@@ -458,7 +525,7 @@ namespace DealiiFSI
     mg_block_transfer.reinit_block<1>(1, mue_lu_multigrid.get_mg_transfer());
 
 
-    number smoother_dumping = 0.8;
+    number smoother_dumping = 1.0;
     MMG::BlockJacobiSmoother<MMG::BlockVectorType<number>, MMG::VectorType<number>>
         mg_block_smoother_pre(mg_block_matrix, level_map, {smoother_dumping});
     mg_block_smoother_pre.reinit_block(0, mg_hierarchy.get_mg_pre_smoother());
@@ -466,13 +533,38 @@ namespace DealiiFSI
 
     const auto& mg_block_smoother_post = mg_block_smoother_pre;
 
+    dealii::Table<2, MMG::TRILINOS::SparseMatrixInterface> coarse_matrices(2, 2);
+    coarse_matrices(0, 0) = mg_hierarchy.get_coarse_matrix();
+    coarse_matrices(0, 1) = mg_fluid_solid_coupling->get_coarse_matrix(min_level);
+    coarse_matrices(1, 0) = mg_solid_fluid_coupling->get_coarse_matrix(min_level);
+    coarse_matrices(1, 1) = mue_lu_multigrid.get_coarse_matrix();
+    auto coarse_block_matrix = MMG::TRILINOS::BlockMatrixInterface<MMG::BlockVectorType<number>,
+        MMG::VectorType<number>>::combine_matrices(coarse_matrices);
+
+    {
+      MMG::MultiBlockVector<MMG::BlockVectorType<number>, MMG::VectorType<number>> rhs_coarse,
+          solution_coarse_op, solution_coarse;
+
+      MMG::TOOLS::initialize_dof_vector(
+          min_level, level_map, rhs_coarse, mg_hierarchy, mue_lu_multigrid);
+      MMG::TOOLS::initialize_dof_vector(
+          min_level, level_map, solution_coarse_op, mg_hierarchy, mue_lu_multigrid);
+      MMG::TOOLS::initialize_dof_vector(
+          min_level, level_map, solution_coarse, mg_hierarchy, mue_lu_multigrid);
+
+      MMG::TOOLS::set_random_entries(rhs_coarse);
+      coarse_block_matrix.vmult(solution_coarse, rhs_coarse);
+
+      mg_block_matrix.vmult(min_level, solution_coarse_op, rhs_coarse);
+      solution_coarse -= solution_coarse_op;
+      std::cout << "Coarse solution norm: " << solution_coarse.l2_norm() << std::endl;
+      std::cout << "Coarse solution operator norm: " << solution_coarse_op.l2_norm() << std::endl;
+    }
+
 
     // build the coarse matrix...
-    // MMG::BlockCoarseGridDirectSolve<MMG::BlockVectorType<number>, MMG::VectorType<number>>
-    //     mg_block_coarse_grid;
-
-    MMG::BlockCoarseGridNoSolve<MMG::BlockVectorType<number>, MMG::VectorType<number>>
-        mg_block_coarse_grid;
+    MMG::BlockCoarseGridDirectSolve<MMG::BlockVectorType<number>, MMG::VectorType<number>>
+        mg_block_coarse_grid(coarse_block_matrix);
 
     MMG::MultiBlockVector<MMG::BlockVectorType<number>, MMG::VectorType<number>> rhs_coupled,
         solution_coupled;
@@ -514,21 +606,86 @@ namespace DealiiFSI
     fine_operator.vmult = [&](auto& dst, const auto& src)
     { mg_block_matrix.vmult(max_level, dst, src); };
 
+    MMG::vector_assembly_loop(mg_hierarchy.get_matrix_free(max_level),
+        rhs_coupled.template block<0>(), &Details::assemble_cell, &Details::assemble_flux,
+        &Details::assemble_boundary, &mg_hierarchy.get_operator(max_level).get_details());
+    rhs_coupled.template block<1>() = solid_rhs;
+    std::cout << "RHS norm: " << rhs_coupled.l2_norm() << std::endl;
+
+
     mg_block_matrix.vmult(max_level, solution_coupled, rhs_coupled);
+    std::cout << "Solution norm: " << solution_coupled.l2_norm() << std::endl;
+
     mg_pc.vmult(solution_coupled, rhs_coupled);
+    std::cout << "Solution norm: " << solution_coupled.l2_norm() << std::endl;
+
+    std::vector<const dealii::DoFHandler<dim>*> dof_handlers = {
+        &mg_hierarchy.get_dof_handler_velocity(max_level, true),
+        &mg_hierarchy.get_dof_handler_velocity(max_level, false)};
+    Core::LinAlg::Vector<double> solid_output(*rhs);
 
 
     /*
-    dealii::SolverControl solver_control(200, 1e-6);
-    dealii::SolverGMRES<
-        MMG::MultiBlockVector<MMG::BlockVectorType<number>, MMG::VectorType<number>>>
-        solver(solver_control);
+    {
+      auto dst_solid = solution_coupled.template block<1>();
+      auto src_solid = rhs_coupled.template block<1>();
 
-    solver.solve(fine_operator, solution_coupled, rhs_coupled, mg_pc);
+      MMG::MultiBlockVector<MMG::BlockVectorType<number>> dst_fluid, src_fluid;
+      dst_fluid.template block<0>() = solution_coupled.template block<0>();
+      src_fluid.template block<0>() = rhs_coupled.template block<0>();
+
+
+      mg_hierarchy.assemble_coarse_matrix(max_level);
+      dealii::Table<2, MMG::TRILINOS::SparseMatrixInterface> fine_matrices(1, 1);
+      fine_matrices[0][0] = mg_hierarchy.get_coarse_matrix();
+      auto fine_matrix_fluid =
+          MMG::TRILINOS::BlockMatrixInterface<MMG::BlockVectorType<number>>::combine_matrices(
+              fine_matrices);
+
+
+      MMG::BlockCoarseGridDirectSolve fluid_direct_solve(fine_matrix_fluid);
+      fluid_direct_solve(0, dst_fluid, src_fluid);
+      interface_matrix.vmult_add(src_solid, dst_fluid.template block<0>());
+      auto solver_connector =
+          [&](const unsigned int iteration, const double check_value, const auto& current_iterate)
+      {
+        (void)current_iterate;
+        std::cout << "Iteration: " << iteration << " Error: " << check_value << std::endl;
+        return dealii::SolverControl::success;
+      };
+
+      dealii::SolverControl solver_control(200, 1e-6);
+      dealii::SolverBicgstab<MMG::VectorType<number>> solver(solver_control);
+      solver.connect(solver_connector);
+
+      try
+      {
+        solution_coupled = 0;
+        solver.solve(mmg_solid_matrix, dst_solid, src_solid, mue_lu_multigrid);
+        std::cout << "Solver converged after: " << solver_control.last_step()
+                  << " steps with residual: " << solver_control.last_value() << std::endl;
+      }
+      catch (const dealii::SolverControl::NoConvergence& e)
+      {
+        std::cout << "Solver failed after: " << solver_control.last_step()
+                  << " steps with residual: " << solver_control.last_value() << std::endl;
+      }
+    }
     */
 
 
+
     /*
+    for (unsigned int i = 0; i < solid_rhs.size(); ++i)
+    {
+      solid_output[i] = solution_coupled.template block<1>()[i];
+    }
+    output_results(solid_output, *visualization_writer, 0, "mg_step_solid");
+    output_results(dof_handlers, solution_coupled.template block<0>(), 0, "mg_step_fluid");
+    */
+
+
+
     const auto visualization_writer =
         std::make_unique<Core::IO::DiscretizationVisualizationWriterMesh>(
             structdis, Core::IO::visualization_parameters_factory(
@@ -536,15 +693,46 @@ namespace DealiiFSI
                            *Global::Problem::instance()->output_control_file(), 0));
 
 
-    visualization_writer->append_result_data_vector_with_context(
-        solid_output, Core::IO::OutputEntity::dof, {"solid_rhs"});
 
-    visualization_writer->append_result_data_vector_with_context(solid_output,
-        Core::IO::OutputEntity::dof, {"displacement_x", "displacement_y", std::nullopt});
+    auto solver_connector =
+        [&](const unsigned int iteration, const double check_value, const auto& current_iterate)
+    {
+      (void)current_iterate;
+      std::cout << "Iteration: " << iteration << " Error: " << check_value << std::endl;
 
-    visualization_writer->append_result_data_vector_with_context(
-        solid_output, Core::IO::OutputEntity::dof, {"displacement", "displacement", std::nullopt});
-    visualization_writer->write_to_disk(0.0, 0);*/
+      /*
+      for (unsigned int i = 0; i < solid_rhs.size(); ++i)
+      {
+        solid_output[i] = current_iterate.template block<1>()[i];
+      }
+      output_results(solid_output, *visualization_writer, iteration, "mg_step_solid");
+      output_results(dof_handlers, current_iterate.template block<0>(), iteration,
+      "mg_step_fluid");*/
+      return dealii::SolverControl::success;
+    };
+
+
+
+    dealii::SolverControl solver_control(200, 1e-6);
+    dealii::SolverFGMRES<
+        MMG::MultiBlockVector<MMG::BlockVectorType<number>, MMG::VectorType<number>>>
+        solver(solver_control);
+    solver.connect(solver_connector);
+
+    try
+    {
+      solution_coupled = 0;
+      solver.solve(fine_operator, solution_coupled, rhs_coupled, mg_pc);
+      std::cout << "Solver converged after: " << solver_control.last_step()
+                << " steps with residual: " << solver_control.last_value() << std::endl;
+    }
+    catch (const dealii::SolverControl::NoConvergence& e)
+    {
+      std::cout << "Solver failed after: " << solver_control.last_step()
+                << " steps with residual: " << solver_control.last_value() << std::endl;
+    }
+
+    // output_results(dof_handlers, solution_coupled.template block<0>(), 0, "fluid_solution");
   }
 }  // namespace DealiiFSI
 FOUR_C_NAMESPACE_CLOSE
