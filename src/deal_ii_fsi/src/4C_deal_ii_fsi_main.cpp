@@ -719,6 +719,8 @@ namespace DealiiFSI
         solver(solver_control);
     solver.connect(solver_connector);
 
+    dealii::Timer timer;
+    timer.start();
     try
     {
       solution_coupled = 0;
@@ -731,8 +733,13 @@ namespace DealiiFSI
       std::cout << "Solver failed after: " << solver_control.last_step()
                 << " steps with residual: " << solver_control.last_value() << std::endl;
     }
-
-    // output_results(dof_handlers, solution_coupled.template block<0>(), 0, "fluid_solution");
+    timer.stop();
+    std::cout << "Time for solve: " << timer.wall_time() << " seconds." << std::endl;
+    std::cout << "Problem size: " << solution_coupled.size() << std::endl;
+    std::cout << "  Fluid dofs: " << solution_coupled.block<0>().size() << " --- "
+              << mg_hierarchy.get_dof_handler_velocity(max_level, true).n_dofs() << " / "
+              << mg_hierarchy.get_dof_handler_velocity(max_level, false).n_dofs() << std::endl;
+    std::cout << "  Solid dofs: " << solution_coupled.block<1>().size() << std::endl;
   }
 }  // namespace DealiiFSI
 FOUR_C_NAMESPACE_CLOSE
