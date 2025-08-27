@@ -1,0 +1,155 @@
+TITLE:
+  - "Test of the new SOLID elements in 4C"
+  - "Time Integration: Standard"
+  - "Shape: hex8"
+  - "Element-Technology: linear_kinematics"
+  - "Fibers: element"
+PROBLEM TYPE:
+  PROBLEMTYPE: "Dealii_FSI"
+STRUCTURAL DYNAMIC:
+  INT_STRATEGY: "Standard"
+  DYNAMICTYPE: "Statics"
+  LINEAR_SOLVER: 1
+  TIMESTEP: 0.5
+  NUMSTEP: 1
+  MAXTIME: 1
+SOLVER 1:
+  SOLVER: "UMFPACK"
+  NAME: "Structure_Solver"
+MATERIALS:
+  - MAT: 1
+    MAT_Struct_StVenantKirchhoff:
+      YOUNG: 2.5
+      NUE: 0.25
+      DENS: 1
+DESIGN LINE DIRICH CONDITIONS:
+  - E: 42
+    NUMDOF: 2
+    ONOFF: [1, 1]
+    VAL: [0, 0]
+    FUNCT: [0, 0]
+PROBLEM SIZE:
+  DIM: 2
+  NODES: 39
+  ELEMENTS: 24
+NODE COORDS:
+  - "NODE 0 COORD -1 -1 0.0"
+  - "NODE 1 COORD 1 -1 0.0"
+  - "NODE 2 COORD 0 -1 0.0"
+  - "NODE 3 COORD 0 0 0.0"
+  - "NODE 4 COORD -0.5 -1 0.0"
+  - "NODE 5 COORD 0.5 -1 0.0"
+  - "NODE 6 COORD -1 -0.5 0.0"
+  - "NODE 7 COORD 1 -0.5 0.0"
+  - "NODE 8 COORD 0 -0.5 0.0"
+  - "NODE 9 COORD 0 0.5 0.0"
+  - "NODE 10 COORD -0.5 -0.5 0.0"
+  - "NODE 11 COORD 0.5 -0.5 0.0"
+  - "NODE 12 COORD -0.75 -1 0.0"
+  - "NODE 13 COORD -0.25 -1 0.0"
+  - "NODE 14 COORD 0.25 -1 0.0"
+  - "NODE 15 COORD 0.75 -1 0.0"
+  - "NODE 16 COORD -1 -0.75 0.0"
+  - "NODE 17 COORD 1 -0.75 0.0"
+  - "NODE 18 COORD 0 -0.75 0.0"
+  - "NODE 19 COORD 0 -0.25 0.0"
+  - "NODE 20 COORD 0 0.25 0.0"
+  - "NODE 21 COORD -0.25 0 0.0"
+  - "NODE 22 COORD 0.25 0 0.0"
+  - "NODE 23 COORD -0.5 -0.75 0.0"
+  - "NODE 24 COORD -0.75 -0.5 0.0"
+  - "NODE 25 COORD -0.25 -0.5 0.0"
+  - "NODE 26 COORD 0.5 -0.75 0.0"
+  - "NODE 27 COORD 0.25 -0.5 0.0"
+  - "NODE 28 COORD 0.75 -0.5 0.0"
+  - "NODE 29 COORD -0.25 0.5 0.0"
+  - "NODE 30 COORD 0.25 0.5 0.0"
+  - "NODE 31 COORD -0.75 -0.75 0.0"
+  - "NODE 32 COORD -0.25 -0.75 0.0"
+  - "NODE 33 COORD -0.25 -0.25 0.0"
+  - "NODE 34 COORD 0.25 -0.75 0.0"
+  - "NODE 35 COORD 0.75 -0.75 0.0"
+  - "NODE 36 COORD 0.25 -0.25 0.0"
+  - "NODE 37 COORD -0.25 0.25 0.0"
+  - "NODE 38 COORD 0.25 0.25 0.0"
+STRUCTURE ELEMENTS:
+  - "0 WALL QUAD4 0 12 31 16 MAT 1 KINEM nonlinear EAS none THICK 1.0 STRESS_STRAIN plane_strain GP 2
+    2"
+  - "1 WALL QUAD4 12 4 23 31 MAT 1 KINEM nonlinear EAS none THICK 1.0 STRESS_STRAIN plane_strain GP 2
+    2"
+  - "2 WALL QUAD4 16 31 24 6 MAT 1 KINEM nonlinear EAS none THICK 1.0 STRESS_STRAIN plane_strain GP 2
+    2"
+  - "3 WALL QUAD4 31 23 10 24 MAT 1 KINEM nonlinear EAS none THICK 1.0 STRESS_STRAIN plane_strain GP 2
+    2"
+  - "4 WALL QUAD4 4 13 32 23 MAT 1 KINEM nonlinear EAS none THICK 1.0 STRESS_STRAIN plane_strain GP 2
+    2"
+  - "5 WALL QUAD4 13 2 18 32 MAT 1 KINEM nonlinear EAS none THICK 1.0 STRESS_STRAIN plane_strain GP 2
+    2"
+  - "6 WALL QUAD4 23 32 25 10 MAT 1 KINEM nonlinear EAS none THICK 1.0 STRESS_STRAIN plane_strain GP 2
+    2"
+  - "7 WALL QUAD4 32 18 8 25 MAT 1 KINEM nonlinear EAS none THICK 1.0 STRESS_STRAIN plane_strain GP 2
+    2"
+  - "8 WALL QUAD4 25 8 19 33 MAT 1 KINEM nonlinear EAS none THICK 1.0 STRESS_STRAIN plane_strain GP 2
+    2"
+  - "9 WALL QUAD4 33 19 3 21 MAT 1 KINEM nonlinear EAS none THICK 1.0 STRESS_STRAIN plane_strain GP 2
+    2"
+  - "10 WALL QUAD4 2 14 34 18 MAT 1 KINEM nonlinear EAS none THICK 1.0 STRESS_STRAIN plane_strain GP 2
+    2"
+  - "11 WALL QUAD4 14 5 26 34 MAT 1 KINEM nonlinear EAS none THICK 1.0 STRESS_STRAIN plane_strain GP 2
+    2"
+  - "12 WALL QUAD4 18 34 27 8 MAT 1 KINEM nonlinear EAS none THICK 1.0 STRESS_STRAIN plane_strain GP 2
+    2"
+  - "13 WALL QUAD4 34 26 11 27 MAT 1 KINEM nonlinear EAS none THICK 1.0 STRESS_STRAIN plane_strain GP
+    2 2"
+  - "14 WALL QUAD4 5 15 35 26 MAT 1 KINEM nonlinear EAS none THICK 1.0 STRESS_STRAIN plane_strain GP 2
+    2"
+  - "15 WALL QUAD4 15 1 17 35 MAT 1 KINEM nonlinear EAS none THICK 1.0 STRESS_STRAIN plane_strain GP 2
+    2"
+  - "16 WALL QUAD4 26 35 28 11 MAT 1 KINEM nonlinear EAS none THICK 1.0 STRESS_STRAIN plane_strain GP
+    2 2"
+  - "17 WALL QUAD4 35 17 7 28 MAT 1 KINEM nonlinear EAS none THICK 1.0 STRESS_STRAIN plane_strain GP 2
+    2"
+  - "18 WALL QUAD4 8 27 36 19 MAT 1 KINEM nonlinear EAS none THICK 1.0 STRESS_STRAIN plane_strain GP 2
+    2"
+  - "19 WALL QUAD4 19 36 22 3 MAT 1 KINEM nonlinear EAS none THICK 1.0 STRESS_STRAIN plane_strain GP 2
+    2"
+  - "20 WALL QUAD4 21 3 20 37 MAT 1 KINEM nonlinear EAS none THICK 1.0 STRESS_STRAIN plane_strain GP 2
+    2"
+  - "21 WALL QUAD4 37 20 9 29 MAT 1 KINEM nonlinear EAS none THICK 1.0 STRESS_STRAIN plane_strain GP 2
+    2"
+  - "22 WALL QUAD4 3 22 38 20 MAT 1 KINEM nonlinear EAS none THICK 1.0 STRESS_STRAIN plane_strain GP 2
+    2"
+  - "23 WALL QUAD4 20 38 30 9 MAT 1 KINEM nonlinear EAS none THICK 1.0 STRESS_STRAIN plane_strain GP 2
+    2"
+DLINE-NODE TOPOLOGY:
+  - "NODE 0 DLINE 42"
+  - "NODE 1 DLINE 42"
+  - "NODE 2 DLINE 42"
+  - "NODE 4 DLINE 42"
+  - "NODE 5 DLINE 42"
+  - "NODE 6 DLINE 42"
+  - "NODE 7 DLINE 42"
+  - "NODE 12 DLINE 42"
+  - "NODE 13 DLINE 42"
+  - "NODE 14 DLINE 42"
+  - "NODE 15 DLINE 42"
+  - "NODE 16 DLINE 42"
+  - "NODE 17 DLINE 42"
+  - "NODE 6 DLINE 1"
+  - "NODE 7 DLINE 1"
+  - "NODE 9 DLINE 1"
+  - "NODE 10 DLINE 1"
+  - "NODE 11 DLINE 1"
+  - "NODE 21 DLINE 1"
+  - "NODE 22 DLINE 1"
+  - "NODE 24 DLINE 1"
+  - "NODE 25 DLINE 1"
+  - "NODE 27 DLINE 1"
+  - "NODE 28 DLINE 1"
+  - "NODE 29 DLINE 1"
+  - "NODE 30 DLINE 1"
+  - "NODE 33 DLINE 1"
+  - "NODE 36 DLINE 1"
+  - "NODE 37 DLINE 1"
+  - "NODE 38 DLINE 1"
+

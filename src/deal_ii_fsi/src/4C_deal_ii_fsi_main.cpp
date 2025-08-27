@@ -58,8 +58,6 @@ FOUR_C_NAMESPACE_OPEN
 
 namespace DealiiFSI
 {
-  constexpr unsigned int refine = 3;
-
 
 
   template <int dim>
@@ -259,6 +257,8 @@ namespace DealiiFSI
 
     MMG::MB::MueLuMultigrid<number> mue_lu_multigrid;
     MMG::MB::MueLuMultigrid<number>::AdditionalData mue_lu_data;
+    mue_lu_data.max_coarse_size = std::min(
+        static_cast<unsigned long>(2000), mmg_solid_matrix.trilinos_ref().getGlobalNumRows() / 10);
     mue_lu_data.block_parameters[0].transfer_type =
         MMG::MB::MueLuMultigrid<number>::AdditionalData::TransferType::SmoothedAggregation;
     mue_lu_data.block_parameters[0].pre_smoother =
@@ -285,6 +285,42 @@ namespace DealiiFSI
     dealii::Triangulation<dim> fluid_domain_tria;
     MMG::Fluid::GeometrySetups::step_46_fluid(fluid_domain_tria);
 
+    {
+      dealii::Triangulation<dim> solid_domain_tria;
+      MMG::Fluid::GeometrySetups::step_46_fluid(solid_domain_tria, false);
+      unsigned int max_refine = 5;
+      for (unsigned int level = 0; level < max_refine; ++level)
+      {
+        MMG::Fluid::GeometrySetups::set_boundary_ids_solid(solid_domain_tria);
+        MMG::Fluid::GeometrySetups::write_to_four_c_input_file(
+            "geometry_solid_" + std::to_string(level) + ".inp", solid_domain_tria);
+        if (level < max_refine - 1) solid_domain_tria.refine_global(1);  // refine 4 times
+      }
+    }
+
+    unsigned int n_elements_solid = structdis->num_global_elements();
+    std::cout << "Number of structure elements: " << n_elements_solid << std::endl;
+    unsigned int refine = -1;  // default
+    switch (n_elements_solid)
+    {
+      case 24:
+        refine = 0;
+        break;
+      case 96:
+        refine = 1;
+        break;
+      case 384:
+        refine = 2;
+        break;
+      case 1536:
+        refine = 3;
+        break;
+      case 6144:
+        refine = 4;
+        break;
+      default:
+        FOUR_C_THROW("NOT IMPLEMENTED FOR THIS NUMBER OF STRUCTURE ELEMENTS");
+    }
     std::vector<std::shared_ptr<dealii::Triangulation<dim>>> triangulations;
     MMG::Fluid::GeometrySetups::setup_geometry(
         triangulations, fluid_domain_tria, refine, MPI_COMM_WORLD);
