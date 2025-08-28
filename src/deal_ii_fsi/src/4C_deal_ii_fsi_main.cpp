@@ -49,6 +49,7 @@
 #include <MMG/Multigrid/Block/coarse_grid/direct_solver.hpp>
 #include <MMG/Multigrid/Block/coarse_grid/no_solver.hpp>
 #include <MMG/Multigrid/Block/operator/operator_base.hpp>
+#include <MMG/Multigrid/Block/smoother/block_gauss_seidel.hpp>
 #include <MMG/Multigrid/Block/smoother/block_jacobi.hpp>
 #include <MMG/Multigrid/Block/transfer/transfer_base.hpp>
 #include <MMG/Multigrid/SingleField/muelu_wrapper.hpp>
@@ -237,6 +238,9 @@ namespace DealiiFSI
 
     structadapter->integrate();
 
+    dealii::Triangulation<dim> solid_tria;
+    auto context = DealiiWrappers::create_triangulation(solid_tria, *structdis);
+
     auto nullspace = Core::FE::compute_null_space(*structdis, 2, 3, *structdis->dof_col_map());
     auto ns_eptra_rcp = Teuchos::rcpFromRef(nullspace->get_epetra_multi_vector());
     Teuchos::RCP<MMG::TRILINOS::TYPES::MultiVector> nullspace_mv =
@@ -260,13 +264,15 @@ namespace DealiiFSI
     mue_lu_data.max_coarse_size = std::min(
         static_cast<unsigned long>(2000), mmg_solid_matrix.trilinos_ref().getGlobalNumRows() / 10);
     mue_lu_data.block_parameters[0].transfer_type =
-        MMG::MB::MueLuMultigrid<number>::AdditionalData::TransferType::SmoothedAggregation;
+        MMG::MB::MueLuMultigrid<number>::AdditionalData::TransferType::EnergyMinimization;
     mue_lu_data.block_parameters[0].pre_smoother =
         MMG::MB::MueLuMultigrid<number>::AdditionalData::SmootherType::ILU;
     mue_lu_data.block_parameters[0].post_smoother =
         MMG::MB::MueLuMultigrid<number>::AdditionalData::SmootherType::ILU;
+    dealii::IndexSet local_dofs(structdis->dof_row_map()->get_epetra_block_map());
+    mue_lu_data.block_parameters[0].block_indices = local_dofs;
     mue_lu_data.block_parameters[0].nullspace = nullspace_mv;
-
+    mue_lu_data.block_parameters[0].n_equations = dim;
 
 
     mue_lu_multigrid.reinit(mmg_solid_matrix, mue_lu_data);
@@ -369,24 +375,38 @@ namespace DealiiFSI
           &Details::flux_integral_local_cell, &mg_hierarchy.get_operator(level).get_details());
     }
 
-    /*using pc_chebychev_full = dealii::PreconditionChebyshev< MMG::MF::OperatorMF< Details >,
-    MMG::BlockVectorType< number >, dealii::LinearOperator< MMG::BlockVectorType< number > > >;
-    dealii::MGLevelObject< pc_chebychev_full::AdditionalData > mg_smoother_data(min_level,
-    max_level); for (unsigned int level = min_level; level <= max_level; ++level)
+
+    /*dealii::MGLevelObject<MMG::Fluid::IndividualBlockSmoother<dim, number,
+    Details::CellIntegrator>> mg_block_pc(min_level, max_level); for (unsigned int level =
+    min_level; level <= max_level; ++level)
     {
-      mg_smoother_data[level].degree                = 4;
-      mg_smoother_data[level].smoothing_range       = 15.0;
-      mg_smoother_data[level].eig_cg_n_iterations   = 10;
-      mg_smoother_data[level].preconditioner        = std::make_shared< dealii::LinearOperator<
-    MMG::BlockVectorType< number > > >(); mg_smoother_data[level].preconditioner->vmult =
-    [&mg_block_pc, level](auto &dst, const auto &src) { mg_block_pc[level].vmult(dst, src);
-      };
+      mg_block_pc[level].initialize(mg_hierarchy.get_matrix_free(level), &Details::cell_integral,
+          &Details::flux_integral_local_cell, &Details::boundary_integral_local_cell,
+          &mg_hierarchy.get_operator(level).get_details());
     }
-    using MGSmoother = dealii::MGSmootherPrecondition< MMG::MF::OperatorMF< Details >,
-    pc_chebychev_full, MMG::BlockVectorType< number > >;
     */
 
 
+    using pc_chebychev_full = dealii::PreconditionChebyshev<MMG::MF::OperatorMF<Details>,
+        MMG::BlockVectorType<number>, dealii::LinearOperator<MMG::BlockVectorType<number>>>;
+    dealii::MGLevelObject<pc_chebychev_full::AdditionalData> mg_smoother_data(min_level, max_level);
+    for (unsigned int level = min_level; level <= max_level; ++level)
+    {
+      mg_smoother_data[level].degree = 4;
+      mg_smoother_data[level].smoothing_range = 15.0;
+      mg_smoother_data[level].eig_cg_n_iterations = 10;
+      mg_smoother_data[level].eigenvalue_algorithm =
+          dealii::internal::EigenvalueAlgorithm::power_iteration;
+      mg_smoother_data[level].preconditioner =
+          std::make_shared<dealii::LinearOperator<MMG::BlockVectorType<number>>>();
+      mg_smoother_data[level].preconditioner->vmult =
+          [&mg_block_pc, level](auto& dst, const auto& src) { mg_block_pc[level].vmult(dst, src); };
+    }
+    using MGSmoother = dealii::MGSmootherPrecondition<MMG::MF::OperatorMF<Details>,
+        pc_chebychev_full, MMG::BlockVectorType<number>>;
+
+
+    /*
     using pc_relaxation = dealii::PreconditionRelaxation<MMG::MF::OperatorMF<Details>,
         dealii::LinearOperator<MMG::BlockVectorType<number>>>;
     dealii::MGLevelObject<pc_relaxation::AdditionalData> mg_smoother_data(min_level, max_level);
@@ -400,7 +420,7 @@ namespace DealiiFSI
           [&mg_block_pc, level](auto& dst, const auto& src) { mg_block_pc[level].vmult(dst, src); };
     }
     using MGSmoother = dealii::MGSmootherPrecondition<MMG::MF::OperatorMF<Details>, pc_relaxation,
-        MMG::BlockVectorType<number>>;
+        MMG::BlockVectorType<number>>;*/
 
 
     auto mg_smoother = std::make_shared<MGSmoother>();
@@ -411,8 +431,7 @@ namespace DealiiFSI
 
     /// ---------------------------------------------------------------------------------------
     // build up the transfer objects:
-    dealii::Triangulation<dim> solid_tria;
-    auto context = DealiiWrappers::create_triangulation(solid_tria, *structdis);
+
     auto mapping = DealiiWrappers::MappingContext<dim>::create_linear_mapping(context);
     InterfaceMatcher<dim> matcher =
         DealiiFSI::make_interface_matcher_across_boundary(solid_tria, fine_fluid_tria, 1e-14);
@@ -562,8 +581,9 @@ namespace DealiiFSI
 
 
     number smoother_dumping = 1.0;
+    // MMG::BlockGaussSeidelSmoother<MMG::BlockVectorType<number>, MMG::VectorType<number>>
     MMG::BlockJacobiSmoother<MMG::BlockVectorType<number>, MMG::VectorType<number>>
-        mg_block_smoother_pre(mg_block_matrix, level_map, {smoother_dumping});
+        mg_block_smoother_pre(mg_block_matrix, level_map);
     mg_block_smoother_pre.reinit_block(0, mg_hierarchy.get_mg_pre_smoother());
     mg_block_smoother_pre.reinit_block(1, mue_lu_multigrid.get_mg_pre_smoother());
 
@@ -716,8 +736,7 @@ namespace DealiiFSI
     {
       solid_output[i] = solution_coupled.template block<1>()[i];
     }
-    output_results(solid_output, *visualization_writer, 0, "mg_step_solid");
-    output_results(dof_handlers, solution_coupled.template block<0>(), 0, "mg_step_fluid");
+
     */
 
 
@@ -736,24 +755,33 @@ namespace DealiiFSI
       (void)current_iterate;
       std::cout << "Iteration: " << iteration << " Error: " << check_value << std::endl;
 
+
       /*
       for (unsigned int i = 0; i < solid_rhs.size(); ++i)
       {
         solid_output[i] = current_iterate.template block<1>()[i];
       }
-      output_results(solid_output, *visualization_writer, iteration, "mg_step_solid");
-      output_results(dof_handlers, current_iterate.template block<0>(), iteration,
-      "mg_step_fluid");*/
+      output_results(solid_output, *visualization_writer, iteration, "solver_step_solid");
+      output_results(
+          dof_handlers, current_iterate.template block<0>(), iteration, "solver_step_fluid");*/
       return dealii::SolverControl::success;
     };
 
 
 
-    dealii::SolverControl solver_control(200, 1e-6);
-    dealii::SolverFGMRES<
+    dealii::ReductionControl solver_control(100, 1e-14, 1e-8);
+    dealii::SolverGMRES<
         MMG::MultiBlockVector<MMG::BlockVectorType<number>, MMG::VectorType<number>>>
         solver(solver_control);
     solver.connect(solver_connector);
+
+    mg_pc.vmult(solution_coupled, rhs_coupled);
+    for (unsigned int i = 0; i < solid_rhs.size(); ++i)
+    {
+      solid_output[i] = solution_coupled.template block<1>()[i];
+    }
+    output_results(solid_output, *visualization_writer, 0, "mg_step_solid");
+    output_results(dof_handlers, solution_coupled.template block<0>(), 0, "mg_step_fluid");
 
     dealii::Timer timer;
     timer.start();
@@ -770,6 +798,12 @@ namespace DealiiFSI
                 << " steps with residual: " << solver_control.last_value() << std::endl;
     }
     timer.stop();
+    for (unsigned int i = 0; i < solid_rhs.size(); ++i)
+    {
+      solid_output[i] = solution_coupled.template block<1>()[i];
+    }
+    output_results(solid_output, *visualization_writer, 0, "solution_solid");
+    output_results(dof_handlers, solution_coupled.template block<0>(), 0, "solution_fluid");
     std::cout << "Time for solve: " << timer.wall_time() << " seconds." << std::endl;
     std::cout << "Problem size: " << solution_coupled.size() << std::endl;
     std::cout << "  Fluid dofs: " << solution_coupled.block<0>().size() << " --- "
