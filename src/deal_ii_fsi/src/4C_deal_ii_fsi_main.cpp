@@ -48,6 +48,7 @@
 #include <MMG/Fluid/solver/mg_hierarchy.hpp>
 #include <MMG/Multigrid/Block/coarse_grid/direct_solver.hpp>
 #include <MMG/Multigrid/Block/coarse_grid/no_solver.hpp>
+#include <MMG/Multigrid/Block/coarse_grid/single_from_block.hpp>
 #include <MMG/Multigrid/Block/operator/operator_base.hpp>
 #include <MMG/Multigrid/Block/smoother/block_gauss_seidel.hpp>
 #include <MMG/Multigrid/Block/smoother/block_jacobi.hpp>
@@ -262,7 +263,7 @@ namespace DealiiFSI
     MMG::MB::MueLuMultigrid<number> mue_lu_multigrid;
     MMG::MB::MueLuMultigrid<number>::AdditionalData mue_lu_data;
     mue_lu_data.max_coarse_size = std::min(
-        static_cast<unsigned long>(2000), mmg_solid_matrix.trilinos_ref().getGlobalNumRows() / 10);
+        static_cast<unsigned long>(15000), mmg_solid_matrix.trilinos_ref().getGlobalNumRows() / 10);
     mue_lu_data.block_parameters[0].transfer_type =
         MMG::MB::MueLuMultigrid<number>::AdditionalData::TransferType::EnergyMinimization;
     mue_lu_data.block_parameters[0].pre_smoother =
@@ -294,7 +295,7 @@ namespace DealiiFSI
     {
       dealii::Triangulation<dim> solid_domain_tria;
       MMG::Fluid::GeometrySetups::step_46_fluid(solid_domain_tria, false);
-      unsigned int max_refine = 5;
+      unsigned int max_refine = 7;
       for (unsigned int level = 0; level < max_refine; ++level)
       {
         MMG::Fluid::GeometrySetups::set_boundary_ids_solid(solid_domain_tria);
@@ -323,6 +324,12 @@ namespace DealiiFSI
         break;
       case 6144:
         refine = 4;
+        break;
+      case 24576:
+        refine = 5;
+        break;
+      case 98304:
+        refine = 6;
         break;
       default:
         FOUR_C_THROW("NOT IMPLEMENTED FOR THIS NUMBER OF STRUCTURE ELEMENTS");
@@ -361,8 +368,12 @@ namespace DealiiFSI
           MMG::Fluid::BoundaryType::None};
     };
 
+    const auto& fine_dof_handler_velocity = mg_hierarchy.get_dof_handler_velocity(max_level, true);
+    auto nitsche_boundary =
+        3.456 * MMG::TOOLS::nitsche_penalty_factor(fine_dof_handler_velocity.get_fe().degree,
+                    fine_dof_handler_velocity.begin_active()->diameter(mg_hierarchy.get_mapping()));
 
-    mg_hierarchy.setup_operators(setup_boundary_conditions);
+    mg_hierarchy.setup_operators(setup_boundary_conditions, nitsche_boundary);
     mg_hierarchy.setup_transfer();
     mg_hierarchy.assemble_coarse_matrix();
 
@@ -375,16 +386,15 @@ namespace DealiiFSI
           &Details::flux_integral_local_cell, &mg_hierarchy.get_operator(level).get_details());
     }
 
-
     /*dealii::MGLevelObject<MMG::Fluid::IndividualBlockSmoother<dim, number,
     Details::CellIntegrator>> mg_block_pc(min_level, max_level); for (unsigned int level =
     min_level; level <= max_level; ++level)
     {
-      mg_block_pc[level].initialize(mg_hierarchy.get_matrix_free(level), &Details::cell_integral,
-          &Details::flux_integral_local_cell, &Details::boundary_integral_local_cell,
-          &mg_hierarchy.get_operator(level).get_details());
-    }
-    */
+      mg_block_pc[level].initialize(mg_hierarchy.get_matrix_free(level),
+          &Details::cell_integral, &Details::flux_integral_local_cell,
+          &Details::boundary_integral_local_cell, &mg_hierarchy.get_operator(level).get_details());
+    }*/
+
 
 
     using pc_chebychev_full = dealii::PreconditionChebyshev<MMG::MF::OperatorMF<Details>,
@@ -681,65 +691,6 @@ namespace DealiiFSI
     Core::LinAlg::Vector<double> solid_output(*rhs);
 
 
-    /*
-    {
-      auto dst_solid = solution_coupled.template block<1>();
-      auto src_solid = rhs_coupled.template block<1>();
-
-      MMG::MultiBlockVector<MMG::BlockVectorType<number>> dst_fluid, src_fluid;
-      dst_fluid.template block<0>() = solution_coupled.template block<0>();
-      src_fluid.template block<0>() = rhs_coupled.template block<0>();
-
-
-      mg_hierarchy.assemble_coarse_matrix(max_level);
-      dealii::Table<2, MMG::TRILINOS::SparseMatrixInterface> fine_matrices(1, 1);
-      fine_matrices[0][0] = mg_hierarchy.get_coarse_matrix();
-      auto fine_matrix_fluid =
-          MMG::TRILINOS::BlockMatrixInterface<MMG::BlockVectorType<number>>::combine_matrices(
-              fine_matrices);
-
-
-      MMG::BlockCoarseGridDirectSolve fluid_direct_solve(fine_matrix_fluid);
-      fluid_direct_solve(0, dst_fluid, src_fluid);
-      interface_matrix.vmult_add(src_solid, dst_fluid.template block<0>());
-      auto solver_connector =
-          [&](const unsigned int iteration, const double check_value, const auto& current_iterate)
-      {
-        (void)current_iterate;
-        std::cout << "Iteration: " << iteration << " Error: " << check_value << std::endl;
-        return dealii::SolverControl::success;
-      };
-
-      dealii::SolverControl solver_control(200, 1e-6);
-      dealii::SolverBicgstab<MMG::VectorType<number>> solver(solver_control);
-      solver.connect(solver_connector);
-
-      try
-      {
-        solution_coupled = 0;
-        solver.solve(mmg_solid_matrix, dst_solid, src_solid, mue_lu_multigrid);
-        std::cout << "Solver converged after: " << solver_control.last_step()
-                  << " steps with residual: " << solver_control.last_value() << std::endl;
-      }
-      catch (const dealii::SolverControl::NoConvergence& e)
-      {
-        std::cout << "Solver failed after: " << solver_control.last_step()
-                  << " steps with residual: " << solver_control.last_value() << std::endl;
-      }
-    }
-    */
-
-
-
-    /*
-    for (unsigned int i = 0; i < solid_rhs.size(); ++i)
-    {
-      solid_output[i] = solution_coupled.template block<1>()[i];
-    }
-
-    */
-
-
 
     const auto visualization_writer =
         std::make_unique<Core::IO::DiscretizationVisualizationWriterMesh>(
@@ -769,7 +720,7 @@ namespace DealiiFSI
 
 
 
-    dealii::ReductionControl solver_control(100, 1e-14, 1e-8);
+    dealii::ReductionControl solver_control(100, 1e-14, 1e-12);
     dealii::SolverGMRES<
         MMG::MultiBlockVector<MMG::BlockVectorType<number>, MMG::VectorType<number>>>
         solver(solver_control);
@@ -798,6 +749,59 @@ namespace DealiiFSI
                 << " steps with residual: " << solver_control.last_value() << std::endl;
     }
     timer.stop();
+
+
+    /*
+     {
+      MMG::BlockVectorType<number> fluid_sub_solution, fluid_sub_rhs;
+      unsigned int f_max_level = mg_hierarchy.max_level();
+      mg_hierarchy.initialize_dof_vector(f_max_level, fluid_sub_solution);
+      mg_hierarchy.initialize_dof_vector(f_max_level, fluid_sub_rhs);
+      fluid_sub_rhs = rhs_coupled.template block<0>();
+      fluid_sub_solution = 0;
+
+      dealii::Table<2, MMG::TRILINOS::SparseMatrixInterface> fluid_coarse_matrices(1, 1);
+      fluid_coarse_matrices(0, 0) = mg_hierarchy.get_coarse_matrix();
+      auto fluid_coarse_block_matrix =
+          MMG::TRILINOS::BlockMatrixInterface<MMG::BlockVectorType<number>>::combine_matrices(
+              fluid_coarse_matrices);
+      MMG::BlockCoarseGridDirectSolve<MMG::BlockVectorType<number>> fluid_block_coarse_grid(
+          fluid_coarse_block_matrix);
+      MMG::CoarseGridBlockWrapper fluid_coarse_wrapper(fluid_block_coarse_grid);
+
+      dealii::Multigrid<MMG::BlockVectorType<number>> fluid_mg(*mg_hierarchy.get_mg_operator(),
+          fluid_coarse_wrapper, *mg_hierarchy.get_mg_transfer(),
+          *mg_hierarchy.get_mg_pre_smoother(), *mg_hierarchy.get_mg_post_smoother());
+
+
+      for (unsigned int level = 0; level <= f_max_level; ++level)
+      {
+        mg_hierarchy.initialize_dof_vector(level, fluid_mg.defect[level]);
+      }
+
+      dealii::LinearOperator<MMG::BlockVectorType<number>> mg_fluid_pc;
+      mg_fluid_pc.vmult = [&](auto& dst, const auto& src)
+      {
+        fluid_mg.defect[max_level] = src;
+        for (unsigned int level = level_map.min_level(); level < level_map.max_level(); ++level)
+        {
+          fluid_mg.defect[level] = 0;
+        }
+        fluid_mg.cycle();
+        dst = fluid_mg.solution[max_level];
+      };
+
+      dealii::ReductionControl fluid_solver_control(100, 1e-14, 1e-8);
+      dealii::SolverGMRES<MMG::BlockVectorType<number>> fluid_solver(fluid_solver_control);
+      fluid_solver.connect(solver_connector);
+      fluid_solver.solve(
+          mg_hierarchy.get_operator(f_max_level), fluid_sub_solution, fluid_sub_rhs, mg_fluid_pc);
+
+      std::cout << "Solver converged after: " << fluid_solver_control.last_step()
+                << " steps with residual: " << fluid_solver_control.last_value() << std::endl;
+    }
+    */
+
     for (unsigned int i = 0; i < solid_rhs.size(); ++i)
     {
       solid_output[i] = solution_coupled.template block<1>()[i];
